@@ -1,0 +1,78 @@
+//***************************************************************************
+//  $Id: myapp.oil 265 2011-02-04 16:32:11Z merdmann $
+//
+//  Aug 31, 2008 9:52:18 AM
+//  Copyright 2008 Michael Erdmann
+//  Email: michel.erdmann@snafu.de
+ ****************************************************************************/
+
+//
+//  This program is free software; you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation; either version 2 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License
+//  along with this program; if not, write to the Free Software
+//  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+//
+OIL_VERSION = "1.0" ;
+
+CPU myapp {
+#   include timer.oil
+
+	OS mkernel {
+		STATUS = STANDARD;
+		PRETASKHOOK = FALSE;
+		POSTTASKHOOK = FALSE;
+	};
+
+	APPMODE IOR5E ;	
+
+	EVENT LED_Tick { MASK = AUTO; };
+	EVENT LED_ON   { MASK = AUTO; };
+	EVENT LED_OFF  { MASK = AUTO; };
+
+	ALARM myAlarm {
+		COUNTER = T1_Counter;
+		//ACTION = ALARMCALLBACK { 
+		//		ALARMCALLBACKNAME = Toggle_LED ;
+		//		};
+		ACTION = SETEVENT {
+			TASK = Sender;
+			EVENT = LED_Tick;
+		};
+	} ;
+	
+			
+	TASK Sender {
+		PRIORITY = 55;
+		STACKSIZE = 200;
+		SCHEDULE = FULL;
+		AUTOSTART = TRUE;
+		EVENT = LED_ON;
+		EVENT = LED_OFF;
+		EVENT = LED_Tick;
+	};
+	
+	TASK Receiver {
+		PRIORITY = 99;
+		STACKSIZE = 200;
+		SCHEDULE = FULL;
+		AUTOSTART = TRUE;
+	};
+	
+	
+	TASK ReceiverXX {
+		PRIORITY = 999;
+		STACKSIZE = 200;
+		SCHEDULE = FULL;
+		AUTOSTART = TRUE;
+	};
+	
+} ;

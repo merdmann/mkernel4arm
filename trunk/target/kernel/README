@@ -1,0 +1,66 @@
+Interrupt handler
+=================
+
+The task preemption is implemented by means of a low priority interrupt. On
+expiery of the preemption timer the schedulter and the interrupt handler is 
+beeing called,
+The high priority interraupt is used to generate the base for all timers. Two 
+cases are possible:
+
+1. The high priority interrupt handler interrupts a low priority 
+
+	       Lo Pri          high prio          Schedule (1)    Schedule 2
+          |                   |                  |                
+(1) ----->| Save current      |                  |
+          X Stack ponter      |                  |
+          X                   |                  |
+          X             Call Schedule            |                         
+          X----(1a)----------------------------->X                  
+          |                   |                  X      
+(2) ------------------------->X                  |                  |
+          |                   X  Call Schedule   |                  |
+          |                   X------(2a)---------------------------X
+          |                   |                  |                  X 
+          |                   |                  |                  X
+          |                   |                  |                  X
+          |                   X<-----(2b)-------------------------RETURN              
+          |                   X 			     |                  |
+          |                   X 			     |                  |
+          |                   X 			     |                  |
+          |               RETURNIE-------------->X (1b)             |       
+          |                   |                  X                  |       
+          |                   |                  X                  |       
+          |                   |                  X                  |     
+          |                   |                  X                  |     
+          |<----(1c)------------------------- RETURN                |     
+          X                   |                  |                  |       
+          X                   |                  |                  |       
+  (1e) RTURNIE                |                  |                  |       
+          |                   |                  |                  |       
+    
+  
+(1)  a low prio interrupt is issued and the interrupt handler is called.
+(1a) The procedure Schedule is called
+(2)  High prio interrupt is called
+(2a) Schedule is called and executes till the end and sets the next 
+     process address
+(2b) The Schedule procedure return and set the pointer to the stack of the 
+     next process to execute. The originally called code continues executuib 
+(1b) Schedule continues to execute until it computes the stack address of the 
+     next process. If the interrupt indicator is set we will not change 
+     the reference.
+     
+(1c) The low priority code will be continued
+(1e) Low Prio Interrupt handler continues
+
+
+
+User Mode 
+=========
+
+The variable _os_mode indicates how operating system calls should behave. If the 
+value is USER_MODE the os primitives are called and the _yield function is called.
+If the mode is KERNEL_MODE the _yield function is not called. This allows to call
+the os function from the kernel any where without causing a task switch.
+     
+                                                

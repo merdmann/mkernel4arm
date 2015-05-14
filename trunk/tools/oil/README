@@ -1,0 +1,42 @@
+This directory contains the OIL compiler
+
+Supported OIL Objects
+=====================
+
+
+	info("");
+	info("Generating files %s_init.c and %s_defs.h", application_name, application_name);
+	info("");
+
+
+
+Object       Implemented   Description 
+CPU:           Yes         the CPU on which the application runs under the control of
+                           OSEK sub-systems.
+OS:            Yes         the OSEK OS that runs on the CPU. No standard references are
+                           defined in OIL from OSEK OS to other OIL objects.
+APPMODE:       Yes         defines different modes of operation for the application. No
+                           standard attributes are defined for the APPMODE object.
+ISR:           No          interrupt service routines supported by the OS.
+RESOURCE:      Yes         a resource that can be occupied by a task.
+TASK:          Yes         a task handled by the OS.
+COUNTER:       Yes         a counter represents hardware/software tick source for alarms.
+EVENT:         Yes         an event tasks may react on.
+ALARM:         Yes         an alarm is based on a counter and can either activate a task, set
+                           an event or activate an alarm-callback routine.
+COM:           No          the communication subsystem. The COM object has standard
+                           attributes to define general properties for OSEK COM.
+MESSAGE:       No 		   a message is defined in OSEK COM and defines the supplier-
+                           specific attributes of a mechanism for data exchange between
+                           different entities (entities being tasks or ISRs) and with other
+                           CPUs.
+NETWORKMESSAGE:No         a network message is defined in OSEK COM and defines the
+                           OEM-specific attributes of a mechanism for data exchange
+                           between different entities (entities being tasks or ISRs) and with
+                           other CPUs.
+IPDU:          No          an IPDU is defined in OSEK COM. IPDUs carry messages used
+                           in external communication.
+NM:            No          the network management subsystem.
+
+
+$Id: README 219 2008-10-12 17:23:57Z merdmann $

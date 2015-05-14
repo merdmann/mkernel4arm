@@ -1,0 +1,7 @@
+build/
+build-*/
+*.asm
+*.lst
+*.o
+*.d
+

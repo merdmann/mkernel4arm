@@ -1,0 +1,72 @@
+# ***************************************************************************
+# *  $Id: Makefile 260 2011-01-19 05:51:10Z merdmann $
+# *
+# *  Thu Nov 29 21:15:34 2007
+# *  Copyright  2007  User
+# *  Email: michael.erdmann@snafu.de
+# ****************************************************************************/
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+sinclude make.conf
+sinclude $(ROOT)/VERSION
+include $(ROOT)/make.conf
+
+CFLAGS=-DVERSION_MAJOR=\"$(VERSION_MAJOR)\" \
+	   -DVERSION_MINOR=\"$(VERSION_MINOR)\" \
+	   -DVERSION_PATCHLEVEL=\"$(VERSION_PATCH)\"
+
+all: $(OIL)
+
+$(OIL): oil.o liboil.a
+	$(PLFCC) $(CFLAGS) oil.c -o $(OIL) -L./ -loil
+
+test: all
+	$(MAKE) -C./sandbox clean
+	$(MAKE) -C./sandbox all
+
+liboil.a :  scanner.o parser.o bucket.o objects.o attributes.o sysgen.o
+	$(AR) -c -r liboil.a scanner.o parser.o bucket.o objects.o attributes.o sysgen.o
+	ranlib liboil.a
+
+scanner.o: scanner.c scanner.h oil.h
+	$(PLFCC) $(CFLAGS) -c scanner.c 
+
+parser.o: parser.c parser.h scanner.h oil.h
+	$(PLFCC) $(CFLAGS) -c parser.c 
+
+bucket.o: bucket.c bucket.h oil.h
+	$(PLFCC) $(CFLAGS) -c bucket.c 
+
+objects.o: objects.c objects.h bucket.h oil.h object_names.h
+	$(PLFCC) $(CFLAGS) -c objects.c
+
+attributes.o: attributes.c attributes.h oil.h
+	$(PLFCC) $(CFLAGS) -c attributes.c
+
+sysgen.o: sysgen.c sysgen.h
+	$(PLFCC)  $(CFLAGS) -c sysgen.c 
+
+oil.o: oil.c oil.h parser.h objects.h
+	$(PLFCC) $(CFLAGS) -c oil.c 
+
+deps:
+
+
+clean: 
+	$(RM) -rf *.o *~ *~*~ $(oilbin) liboil.a
+	$(MAKE) -C./sandbox clean
+
+
+
