@@ -11,11 +11,11 @@ set(OOCD_BOARD stm32f4discovery)
 set(OOCD_ARGS "${OOCD_ARGS} -f interface/${OOCD_INTERFACE}.cfg")
 set(OOCD_ARGS "${OOCD_ARGS} -f board/${OOCD_BOARD}.cfg")
 #set(OOCD_ARGS "${OOCD_ARGS} -c ft2232_serial ${OOCD_SERIAL}" )
-set(OOCD_ARGS "${OOCD_ARGS} -c init")
-set(OOCD_ARGS "${OOCD_ARGS} -c \"reset init\"")
-set(OOCD_ARGS "${OOCD_ARGS} -c \"flash write_image erase ../../bin/myapp.elf\"")
-set(OOCD_ARGS "${OOCD_ARGS} -c reset")
-set(OOCD_ARGS "${OOCD_ARGS} -c shutdown")
+set(OOCD_ARGS "${OOCD_ARGS} -c init ")
+set(OOCD_ARGS "${OOCD_ARGS} -c \"reset init\" ")
+set(OOCD_ARGS "${OOCD_ARGS} -c \"flash write_image erase ../../bin/myapp.elf\" ")
+set(OOCD_ARGS "${OOCD_ARGS} -c reset ")
+set(OOCD_ARGS "${OOCD_ARGS} -c shutdown ")
 
 ####
 set(KERNEL_INCLUDE ../../include)
@@ -45,9 +45,8 @@ target_link_libraries( myapp.elf disco kernel stm32f libopencm3_stm32f4.a )
 ## flash the 
 add_custom_command(
 	TARGET myapp.elf POST_BUILD
-##	MAIN_DEPENDENCY myapp.elf
+	MAIN_DEPENDENCY myapp.elf
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
        	COMMAND arm-none-eabi-size ${EXECUTABLE_OUTPUT_PATH}/myapp.elf	
-	COMMAND pwd
 	COMMAND ${OOCD} ${OOCD_ARGS}
 ) 

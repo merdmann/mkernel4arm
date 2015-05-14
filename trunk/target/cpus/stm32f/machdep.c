@@ -109,7 +109,7 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
     f->r10 = 11;
     f->r11 = 12;
     f->r12 = 13;
-    f->ret = 0xfffffff8;
+    f->ret = 0xfffffffd;
     return (DATA POINTER)f;
 }
 
@@ -120,13 +120,11 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
 */
 __attribute__ ((naked)) void _machdep_restore_context() {
    asm( 
-
         "ldr r0, =_os_current_stack \n\t"
         "ldr sp,[r0,#0]             \n\t"
 
         "pop {r4-r11}               \n\t"
         "pop {pc}                   \n\t" 
-
     );    
 }
 
@@ -149,10 +147,12 @@ __attribute__ ((naked)) void _machdep_save_context() {
 }
 
 
-void _machdep_yield(void) {    
+
+__attribute__ ((naked)) void _machdep_yield(void) {    
   asm( 
-       "ldr r0, =_os_current_stack  \n\t"
+        "ldr r0, =_os_current_stack \n\t"
         "ldr sp,[r0,#0]             \n\t"
+        "isb                        \n\t"
 
         "pop {r4-r11}               \n\t"
         "pop {pc}                   \n\t" 
@@ -164,15 +164,15 @@ void _machdep_yield(void) {
 /*  
  * The stm32 provides to stacks; this function switches to this thread mode.
  */
-void _machdep_boot(void) {    
-#ifdef FOO
-
+__attribute__ ((naked)) void _machdep_boot(void) {    
    asm(
         "ldr r0, =_os_kernel_stack      \n\t"
         "ldr sp,[r0,#0]                 \n\t"
-
+        "mov r0,#0b011                  \n\t"
+        "msr control, r0                \n\t"
+        "isb                            \n\t"
+        "bx lr                          \n\t"
     );
-#endif
 }
 
 /*

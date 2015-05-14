@@ -48,8 +48,6 @@ AppModeType GetActiveApplicationMode ( void ) {
  * _START as task will become active.
  */
 void StartOS(AppModeType mode) {
-
-    _machdep_boot();            // setup stack model etc ....
     // some hardware init
     active_mode = mode;
     _os_mode = KERNEL_MODE;
@@ -58,13 +56,12 @@ void StartOS(AppModeType mode) {
     _os_initialize_scheduler();
 
     StartupHook();
-
     _oil_device_init();
 
 
     /* we are switching now to user mode and start the idle task */
     _os_mode = USER_MODE;
-
+    _machdep_boot();            // setup stack model etc ....
     _machdep_yield();
 }
 
