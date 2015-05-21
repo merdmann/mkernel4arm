@@ -58,6 +58,8 @@ void _os_task_terminated(void) {
 	_os_claim_tcb(_os_my_task_id);
 	_TCB[_os_my_task_id].state = PROC_SUSPENDED;
 	_os_release_tcb(_os_my_task_id);
+
+  _os_schedule();
   
 	_machdep_yield();
 	/* should never return to this point */
@@ -93,8 +95,9 @@ void _os_schedule() {
     byte start = 0;
     t_task_id last_task_id;
 
-    /* if non preemptable tasks of admin operations skip the selection of a tasks */
-    if( _TCB[_os_my_task_id].descriptor->schedule == NON || _TCB[_os_my_task_id].admin != NULL_TASK_ID )
+    /* if non preemptable tasks is running or an admin task is pedning no recscheduling */
+    if( (_TCB[_os_my_task_id].descriptor->schedule == NON  && _TCB[_os_my_task_id].state == PROC_COMPUTING) 
+      || _TCB[_os_my_task_id].admin != NULL_TASK_ID )
         return;
 
     /* save the context by storing the current stack */

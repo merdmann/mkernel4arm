@@ -58,6 +58,8 @@ void StartOS(AppModeType mode) {
     StartupHook();
     _oil_device_init();
 
+    _os_schedule();
+
 
     /* we are switching now to user mode and start the idle task */
     _os_mode = USER_MODE;

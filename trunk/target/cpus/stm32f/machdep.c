@@ -32,6 +32,7 @@
 #include "mkernel_config.h"
 #include "kernel.h"
 
+#include <libopencm3/cm3/scb.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/cm3/nvic.h>
@@ -40,6 +41,9 @@
 #include "typedefs.h"
 #include "alarm.h"
 #include "machdep.h"
+
+#include "../../boards/disco/gfx.h"
+#include "../../boards/disco/lcd-spi.h"
 
 extern DATA POINTER _os_current_stack;
 
@@ -53,12 +57,33 @@ extern void System_Tick_Handler(void);          // comminig frm the alarm module
 static volatile uint32_t system_millis;         // simple 
 
 
+/**
+ * @brief sleep a given number of milli seconds
+ * @details This is a busy waiting for a given number of muliseconds. It uses
+ * the systick counter set by the systick handler of the libcm3 package.
+ * 
+ * @param delay in miliseconds
+ */
 void msleep(uint32_t delay)
 {
         uint32_t wake = system_millis + delay;
         while (wake > system_millis);
 }
 
+
+typedef struct {
+    dword r0;
+    dword r1;
+    dword r2;
+    dword r3;
+    dword r12;
+    void  *lr;
+    void  *pc;
+    dword psr;
+    dword s[16];
+    dword fpscr;
+    dword fill;     // highest address on stack
+} t_exception;
 
 typedef struct {
     dword r4;      // lowest address
@@ -72,34 +97,33 @@ typedef struct {
 
     dword ret;
                     // *** exception stack frame 
-    dword r0;
-    dword r1;
-    dword r2;
-    dword r3;
-    dword r12;
-    dword lr;
-    dword pc;
-    dword psr;
-    dword s[16];
-    dword fpscr;
-    dword fill;     // highest address on stack
-}  t_frame;
+    t_exception ex;
+}  t_context;
 
 
+/**
+ * @brief Create the initial stack layout for the a task
+ * @details Create an initial task context on the given stack and returns pointer to it.
+ * 
+ * @param POINTER  point to the top of the stack.
+ * @param POINTER  points to the start address
+ * @param pvParameters arguments passed to the task
+ * @return  the place where the process context starts on the stack
+ */
 DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER addr, TASK_ARGUMENT pvParameters ) {
     TASK_ARGUMENT args __attribute__((unused)) = pvParameters;
-    t_frame *f = (t_frame*) (topOfStack-sizeof(t_frame));
+    t_context *f = (t_context*) (topOfStack-sizeof(t_context));
 
-    f->fill = 0x4711;
-    f->fpscr = 0;
-    f->psr = 0;
-    f->pc = (dword)addr;
-    f->lr = (dword)&_os_task_terminated;
+    f->ex.fill = 0x4711;
+    f->ex.fpscr = 0;
+    f->ex.psr = 0x01000000;   // reset value of the PSR
+    f->ex.pc = addr;
+    f->ex.lr = (void*)&_os_task_terminated;
 
-    f->r0 = 1;
-    f->r1 = 2;
-    f->r2 = 3;
-    f->r3 = 4;
+    f->ex.r0 = 1;
+    f->ex.r1 = 2;
+    f->ex.r2 = 3;
+    f->ex.r3 = 4;
     f->r4 = 5;
     f->r5 = 6;
     f->r6 = 7;
@@ -108,8 +132,8 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
     f->r9= 10;
     f->r10 = 11;
     f->r11 = 12;
-    f->r12 = 13;
-    f->ret = 0xfffffffd;
+    f->ex.r12 = 13;
+    f->ret = 0xFFFFFFED; 
     return (DATA POINTER)f;
 }
 
@@ -120,11 +144,11 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
 */
 __attribute__ ((naked)) void _machdep_restore_context() {
    asm( 
-        "ldr r0, =_os_current_stack \n\t"
-        "ldr sp,[r0,#0]             \n\t"
-
-        "pop {r4-r11}               \n\t"
-        "pop {pc}                   \n\t" 
+        "LDR r0, =_os_current_stack     \n\t"
+        "LDR r12, [r0]                  \n\t"
+        "LDMIA r12!, {r4-r11, LR}       \n\t"
+        "MSR PSP, r12                   \n\t"
+        "BX lr                          \n\t"
     );    
 }
 
@@ -134,44 +158,62 @@ __attribute__ ((naked)) void _machdep_restore_context() {
  */
 __attribute__ ((naked)) void _machdep_save_context() {
     asm(
-        "push {r0-r12}              \n\t"
-
-        "msr  apsr,r0               \n\t"
-        "push {r0}                  \n\t"
-
-        "push {lr}                  \n\t"
-
-        "ldr r0, =_os_current_stack \n\t"
-        "str sp,[r0,#0]             \n\t"
+        "MRS r12, PSP                   \n\t"
+        "STMDB r12!, {r4-r11, LR}       \n\t"
+        "LDR r0, =_os_current_stack     \n\t"
+        "STR r12, [r0]                  \n\t"
+        "BX lr                          \n\t"
     );
 }
 
 
-
+/*
+ * The following bioth routines working toghether. Calling _machdep_yield will 
+ * force a schedule and a context switch. THe contents switch will be done in
+ * handler mode by the sv_call_handfler;
+ */
 __attribute__ ((naked)) void _machdep_yield(void) {    
-  asm( 
-        "ldr r0, =_os_current_stack \n\t"
-        "ldr sp,[r0,#0]             \n\t"
-        "isb                        \n\t"
-
-        "pop {r4-r11}               \n\t"
-        "pop {pc}                   \n\t" 
-    );       
+    asm( "svc 0 \n" );       
 }
 
+/*
+ * This function is called it initiates are context which to the newly scheduled
+ * task.
+ */
+__attribute__ ((naked)) void sv_call_handler(void) {
+    asm(    
+        "ldr r0, =_os_current_stack     \n\t"
+        "ldr r12,[r0,#0]                \n\t"
+        "ldmia r12!, {r4-r11,lr}        \n\t"
 
+        "msr psp,r12                    \n\t"
+        "isb                            \n\t"
+        "bx lr                          \n\t"
+    );
+}
 
 /*  
- * The stm32 provides to stacks; this function switches to this thread mode.
+ * The stm32 provides to stacks; this function set the msp to the kernel stack and 
+ * the psp to the next process to be scheduled.
  */
 __attribute__ ((naked)) void _machdep_boot(void) {    
    asm(
+        "mrs r0,control                 \n\t"        
+        "orr r0, r0,#0b0100             \n\t"
+        "msr control,r0                 \n\t"        
+
+        "ldr r0, =_os_current_stack     \n\t"
+        "ldr r12,[r0,#0]                \n\t"
+        "msr psp,r12                    \n\t"
+        "isb                            \n\t"      
+
         "ldr r0, =_os_kernel_stack      \n\t"
-        "ldr sp,[r0,#0]                 \n\t"
-        "mov r0,#0b011                  \n\t"
-        "msr control, r0                \n\t"
+        "ldr r12,[r0,#0]                \n\t"
+        "msr msp,r12                    \n\t"
         "isb                            \n\t"
-        "bx lr                          \n\t"
+        // enter handler mode
+
+        "svc 0                          \n\t"
     );
 }
 
@@ -189,7 +231,7 @@ void _machdep_initialize_timer(void) {
     
     rcc_clock_setup_hse_3v3(&hse_8mhz_3v3[CLOCK_3V3_168MHZ]);
     /* Enable GPIOD clock. */
-    //rcc_periph_clock_enable(RCC_GPIOG);
+    rcc_periph_clock_enable(RCC_GPIOG);
 
     /* TODO: not related to timers */
     gpio_mode_setup(GPIOG, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO13|GPIO14);	
@@ -210,6 +252,7 @@ void sys_tick_handler(void) {
 #ifdef FOO
     _machdep_save_context();
 
+    system_millis++;
     _os_mode = KERNEL_MODE;
 
     _os_alarm_scheduler();
@@ -221,6 +264,7 @@ void sys_tick_handler(void) {
     /* you will never get here */
 #endif
 }
+
 
 /*
  * Manage crical section.
@@ -260,6 +304,108 @@ void _machdep_trace(unsigned code ) {
 
 }
 
+/*
+ * int print_hex(int value)
+ *
+ * Very simple routine for printing out hex constants.
+ */
+static void print_hex(unsigned long v)
+{
+    int ndx = 0;
+    char buf[20];
+ 
+    buf[ndx++]='0'; buf[ndx++]='x';
+
+    do {
+        char  c = v & 0xf;
+        buf[ndx++] = (c > 9) ? '7' + c : '0' + c;
+        v = (v >> 4) & 0x0fffffff;
+    } while (v != 0);
+
+    buf[ndx++] = ' ';
+    buf[ndx++] = '\000';
+
+    gfx_puts(buf);
+}
+
+
+static int row = 18;
+static int col = 5;
+#define nl { row = row + 18; gfx_setCursor(col,row); }
+
+void  hard_fault_handler(void) {
+    dword *ex = (dword*)0;
+
+    // here we are calculating the stack pointer. If you add any local defintions
+    // this might change
+    __asm__ __volatile__(
+        "mrs %0, msp        \n\t"
+        :"=r"(ex)
+        :
+        :"r0"
+    );
+    ex = ex + 11;
+
+    volatile unsigned long hfsr = (*((volatile unsigned long *)(SCB_HFSR))) ;
+    volatile unsigned long cfsr = (*((volatile unsigned long *)(SCB_CFSR))) ;
+
+    volatile unsigned long psr = ((t_exception*)ex)->psr;
+    volatile unsigned long pc  = ((t_exception*)ex)->pc;   
+    volatile unsigned long lr  = ((t_exception*)ex)->lr;
+
+    gfx_fillScreen(LCD_GREY);
+    gfx_setTextSize(1); nl;
+    
+    gfx_puts("hard fault exception"); nl;
+    gfx_puts("hfsr:"); print_hex(hfsr); nl;
+
+    if( cfsr & SCB_HFSR_FORCED ) {
+        gfx_puts("forced exception"); nl;
+        if(cfsr & 0xFFFF0000) {
+            int i;
+            unsigned long ufsr = cfsr >> 16;
+            gfx_puts("ufsr:"); print_hex(ufsr); nl;
+
+            for(i=0; i<16; ++i ) {
+                if( (ufsr & (1<<i)) == 0 )
+                    continue;
+
+                switch(i) {
+                    case 0:  gfx_puts("UNDEF "); 
+                        break;
+                    case 1:  gfx_puts("INVST "); 
+                        break;
+                    case 2:  gfx_puts("INVPC ");
+                        break;
+                    case 3:  gfx_puts("NOCP ");
+                        break;
+
+                    case 8:  gfx_puts("UNALLIGN");
+                        break;
+                    case 9:  gfx_puts("DIVBYZERO ");
+                        break;
+                } 
+            }
+            nl;
+        }
+    }
+
+    gfx_puts("psr :"); print_hex(psr); nl;
+    gfx_puts("pc  :"); print_hex(pc); nl;
+    gfx_puts("lr  :"); print_hex(lr); nl;
+    gfx_puts("ccr :"); print_hex(SCB_CCR); nl;
+    lcd_show_frame();
+
+    while(1);
+}
+
+
+
+void  nmi_handler() {
+}
+
+void  pend_sv_handler() {
+}
 
 /* Taken from
  * http://stackoverflow.com/questions/5745880/simulating-ldrex-strex-load-store-exclusive-in-cortex-m0
