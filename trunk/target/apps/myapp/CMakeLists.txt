@@ -40,7 +40,7 @@ add_custom_command(
 ) 
 
 add_executable( myapp.elf myapp.c myapp_init.c)
-target_link_libraries( myapp.elf disco kernel stm32f libopencm3_stm32f4.a )
+target_link_libraries( myapp.elf kernel stm32f disco libopencm3_stm32f4.a )
 
 ## flash the 
 add_custom_command(

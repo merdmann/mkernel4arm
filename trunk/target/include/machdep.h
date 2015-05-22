@@ -51,6 +51,8 @@ void _machdep_critical_begin(void);
  */
 void _machdep_critical_end(void);
 void _machdep_boot(void);
+
+void _machdep_banner(void);
 void _machdep_initialize_wdt(void);
 void _machdep_clear_wdt(void);
 

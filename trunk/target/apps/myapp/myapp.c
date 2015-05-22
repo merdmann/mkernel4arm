@@ -30,8 +30,6 @@
 #include <libopencm3/stm32/gpio.h>
 
 #include "myapp_defs.h"
-#include "../../boards/disco/gfx.h"
-#include "../../boards/disco/lcd-spi.h"
 
 
 TASK(ToggelLED) {
@@ -40,17 +38,7 @@ TASK(ToggelLED) {
 
 
 void StartupHook() {
-    sdram_init();
-    lcd_spi_init();
-
-    gfx_init(lcd_draw_pixel, 240, 320);
-    
-    gfx_fillScreen(LCD_GREY);
-    gfx_setTextSize(1);
-    gfx_setCursor(15, 30);
-    gfx_puts("STM32F4-DISCO");
-
-    lcd_show_frame();
+ 
 }
 
 

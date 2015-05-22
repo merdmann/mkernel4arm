@@ -836,8 +836,8 @@ int sysgen_generate(char *target, char *name) {
 	sysgen_alarm_autostart(appl);
 	fprintf(cf,"\n");
 
-	if( use_timers )
-		fprintf(cf, "_os_initialize_alarm();\n");
+	//if( use_timers )
+	//	fprintf(cf, "_os_initialize_alarm();\n");
 
 	fprintf(cf, "}");
 

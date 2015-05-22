@@ -142,6 +142,9 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
  * pointer which is stored in the variable _os_current_stack and it restores the registers
  * which have been pushed to the stack.
 */
+
+
+
 __attribute__ ((naked)) void _machdep_restore_context() {
    asm( 
         "LDR r0, =_os_current_stack     \n\t"
@@ -165,7 +168,6 @@ __attribute__ ((naked)) void _machdep_save_context() {
         "BX lr                          \n\t"
     );
 }
-
 
 /*
  * The following bioth routines working toghether. Calling _machdep_yield will 
@@ -196,7 +198,7 @@ __attribute__ ((naked)) void sv_call_handler(void) {
  * The stm32 provides to stacks; this function set the msp to the kernel stack and 
  * the psp to the next process to be scheduled.
  */
-__attribute__ ((naked)) void _machdep_boot(void) {    
+void _machdep_boot(void) {    
    asm(
         "mrs r0,control                 \n\t"        
         "orr r0, r0,#0b0100             \n\t"
@@ -211,9 +213,6 @@ __attribute__ ((naked)) void _machdep_boot(void) {
         "ldr r12,[r0,#0]                \n\t"
         "msr msp,r12                    \n\t"
         "isb                            \n\t"
-        // enter handler mode
-
-        "svc 0                          \n\t"
     );
 }
 
@@ -240,19 +239,24 @@ void _machdep_initialize_timer(void) {
 //}
 }
 
-/*
- * This is the handler for the tick timer interrupt. Since T2 is not available
+/**
+ * @brief  System Clock Handler
+ * @details This is the handler for the tick timer interrupt. Since T2 is not available
  * to scale down the clock rate to TICK_MS an additional in memory counter
  * is used to achieve the target clock rate.
- *
  */
 void sys_tick_handler(void) {
-    system_millis++;
+    // save context
+    asm(
+        "MRS r12, PSP                   \n\t"
+        "STMDB r12!, {r4-r11, LR}       \n\t"
+        "LDR r0, =_os_current_stack     \n\t"
+        "STR r12, [r0]                  \n\t"
+    );    
+ 
 
-#ifdef FOO
-    _machdep_save_context();
+   system_millis++;
 
-    system_millis++;
     _os_mode = KERNEL_MODE;
 
     _os_alarm_scheduler();
@@ -260,11 +264,29 @@ void sys_tick_handler(void) {
 
     _os_mode = USER_MODE;
 
-    _machdep_restore_context();
-    /* you will never get here */
-#endif
+
+    // restore context
+       asm( 
+        "LDR r0, =_os_current_stack     \n\t"
+        "LDR r12, [r0]                  \n\t"
+        "LDMIA r12!, {r4-r11, LR}       \n\t"
+        "MSR PSP, r12                   \n\t"
+    );   
 }
 
+void _machdep_banner() {
+    sdram_init();
+    lcd_spi_init();
+
+    gfx_init(lcd_draw_pixel, 240, 320);
+    
+    gfx_fillScreen(LCD_GREY);
+    gfx_setTextSize(1);
+    gfx_setCursor(15, 30);
+    gfx_puts("STM32F4-DISCO");
+
+    lcd_show_frame();
+}
 
 /*
  * Manage crical section.
