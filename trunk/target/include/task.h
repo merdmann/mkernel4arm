@@ -84,7 +84,7 @@ StatusType GetTaskID ( TaskRefType task );
 StatusType GetTaskState( TaskType id, TaskStateRefType state );
 
 /** OSEK/VDX Naming convention for tasks */
-#define TASK(x) void x(TASK_ARGUMENT arg)
+#define TASK(x) void x(TASK_ARGUMENT arg __attribute__((unused)))
 
 
 #endif

@@ -42,8 +42,8 @@ CPU myapp {
         ALARM ledAlarm {
                 COUNTER = System_Tick ;
                 AUTOSTART = TRUE {
-                        ALARMTIME = 50000;
-                        CYCLETIME = 50000;
+                        ALARMTIME = 50;
+                        CYCLETIME = 50;
                 };
 
                 ACTION = ACTIVATETASK { TASK = ToggelLED; };

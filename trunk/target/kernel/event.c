@@ -35,6 +35,7 @@
 #include "kernel.h"
 #include "proc.h"
 #include "event.h"
+#include "machdep.h"
 
 /* set an event flag */
 StatusType SetEvent ( TaskType TaskID, EventMaskType Mask ) {

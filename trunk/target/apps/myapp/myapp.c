@@ -42,7 +42,7 @@ void StartupHook() {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)) ) {
     StartOS(Application_Mode_stm234f);
     return 0;
 }

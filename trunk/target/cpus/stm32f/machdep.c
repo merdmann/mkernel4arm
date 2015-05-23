@@ -37,6 +37,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
+#include <libopencmsis/core_cm3.h>
 
 #include "typedefs.h"
 #include "alarm.h"
@@ -48,10 +49,13 @@
 extern DATA POINTER _os_current_stack;
 
 /* this counter instance is used for the system clock */
-static AlarmBaseType System_Tick_Base = { 4294967295, 1, 100 };
+static AlarmBaseType System_Tick_Base = { (unsigned)0x7fffffff, 1, 100 };
 t_counter System_Tick = { 0,0, &System_Tick_Base };
 
-extern void System_Tick_Handler(void);          // comminig frm the alarm module
+//extern void System_Tick_Handler(void);          // comminig frm the alarm module
+
+void msleep(uint32_t);
+void sdram_init(void);
 
 /* milliseconds since boot */
 static volatile uint32_t system_millis;         // simple 
@@ -138,38 +142,6 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER add
 }
 
 /*
- * The CPU supports two stacks, in thread mode. THis function switchs to process stack 
- * pointer which is stored in the variable _os_current_stack and it restores the registers
- * which have been pushed to the stack.
-*/
-
-
-
-__attribute__ ((naked)) void _machdep_restore_context() {
-   asm( 
-        "LDR r0, =_os_current_stack     \n\t"
-        "LDR r12, [r0]                  \n\t"
-        "LDMIA r12!, {r4-r11, LR}       \n\t"
-        "MSR PSP, r12                   \n\t"
-        "BX lr                          \n\t"
-    );    
-}
-
-/*
- * Save all application registets on the stack and set the _os_current_stack 
- * value.
- */
-__attribute__ ((naked)) void _machdep_save_context() {
-    asm(
-        "MRS r12, PSP                   \n\t"
-        "STMDB r12!, {r4-r11, LR}       \n\t"
-        "LDR r0, =_os_current_stack     \n\t"
-        "STR r12, [r0]                  \n\t"
-        "BX lr                          \n\t"
-    );
-}
-
-/*
  * The following bioth routines working toghether. Calling _machdep_yield will 
  * force a schedule and a context switch. THe contents switch will be done in
  * handler mode by the sv_call_handfler;
@@ -198,8 +170,14 @@ __attribute__ ((naked)) void sv_call_handler(void) {
  * The stm32 provides to stacks; this function set the msp to the kernel stack and 
  * the psp to the next process to be scheduled.
  */
+
+ /**
+  * @brief enter multitaksing mode
+  * @details The stm32 provides to stacks; this function set the msp to the kernel stack and 
+  *          the psp to the next process to be scheduled.
+  */
 void _machdep_boot(void) {    
-   asm(
+   __asm volatile (
         "mrs r0,control                 \n\t"        
         "orr r0, r0,#0b0100             \n\t"
         "msr control,r0                 \n\t"        
@@ -247,33 +225,24 @@ void _machdep_initialize_timer(void) {
  */
 void sys_tick_handler(void) {
     // save context
-    asm(
-        "MRS r12, PSP                   \n\t"
-        "STMDB r12!, {r4-r11, LR}       \n\t"
-        "LDR r0, =_os_current_stack     \n\t"
-        "STR r12, [r0]                  \n\t"
-    );    
- 
-
-   system_millis++;
+    system_millis++;
 
     _os_mode = KERNEL_MODE;
 
     _os_alarm_scheduler();
     _os_schedule();
 
+    if( system_millis % 1000 == 0 ) {
+
+    }
+
     _os_mode = USER_MODE;
-
-
-    // restore context
-       asm( 
-        "LDR r0, =_os_current_stack     \n\t"
-        "LDR r12, [r0]                  \n\t"
-        "LDMIA r12!, {r4-r11, LR}       \n\t"
-        "MSR PSP, r12                   \n\t"
-    );   
 }
 
+/**
+ * @brief Create a banner
+ * @details This procedure create a banner
+ */
 void _machdep_banner() {
     sdram_init();
     lcd_spi_init();
@@ -292,11 +261,11 @@ void _machdep_banner() {
  * Manage crical section.
  */
 void _machdep_critical_begin(void) {
-    void __disable_irq();
+    __disable_irq();
 } 
 
 void _machdep_critical_end(void) {
-    void __enable_irq();
+    __enable_irq();
 }
 
 /*
@@ -355,6 +324,10 @@ static int row = 18;
 static int col = 5;
 #define nl { row = row + 18; gfx_setCursor(col,row); }
 
+/**
+ * @brief [brief description]
+ * @details [long description]
+ */
 void  hard_fault_handler(void) {
     dword *ex = (dword*)0;
 
@@ -371,9 +344,9 @@ void  hard_fault_handler(void) {
     volatile unsigned long hfsr = (*((volatile unsigned long *)(SCB_HFSR))) ;
     volatile unsigned long cfsr = (*((volatile unsigned long *)(SCB_CFSR))) ;
 
-    volatile unsigned long psr = ((t_exception*)ex)->psr;
-    volatile unsigned long pc  = ((t_exception*)ex)->pc;   
-    volatile unsigned long lr  = ((t_exception*)ex)->lr;
+    volatile dword psr = (dword)((t_exception*)ex)->psr;
+    volatile dword pc  = (dword)((t_exception*)ex)->pc;   
+    volatile dword lr  = (dword)((t_exception*)ex)->lr;
 
     gfx_fillScreen(LCD_GREY);
     gfx_setTextSize(1); nl;
@@ -422,11 +395,38 @@ void  hard_fault_handler(void) {
 }
 
 
-
+/**
+ * @brief [brief description]
+ * @details [long description]
+ */
 void  nmi_handler() {
 }
 
-void  pend_sv_handler() {
+/**
+ * @brief [brief description]
+ * @details [long description]
+ * 
+ * @param d [description]
+ * @return [description]
+ */
+__attribute__ ((naked)) void  pend_sv_handler() {
+
+    __asm volatile(
+        "MRS r12, PSP                   \n\t"
+        "STMDB r12!, {r4-r11, LR}       \n\t"
+        "LDR r0, =_os_current_stack     \n\t"
+        "STR r12, [r0]                  \n\t"
+    );    
+ 
+    _os_schedule();
+
+    __asm volatile ( 
+        "LDR r0, =_os_current_stack     \n\t"
+        "LDR r12, [r0]                  \n\t"
+        "LDMIA r12!, {r4-r11, LR}       \n\t"
+        "MSR PSP, r12                   \n\t"
+        "bx lr                          \n\t"
+    );   
 }
 
 /* Taken from

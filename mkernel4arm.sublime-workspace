@@ -128,94 +128,14 @@
 	"buffers":
 	[
 		{
-			"file": "trunk/target/kernel/idle.c",
-			"settings":
-			{
-				"buffer_size": 1792,
-				"line_ending": "Windows"
-			}
-		},
-		{
-			"contents": "/****************************************************************************\n *  $Id: proc.c 273 2011-03-03 21:03:19Z merdmann $\n *\n *  Mon Nov 26 06:50:00 2007\n *  Copyright  2007-2011 Michael Erdmann\n *  Email:Michael.Erdmann@snafu.de\n ****************************************************************************/\n\n/*\n *  This program is free software; you can redistribute it and/or modify\n *  it under the terms of the GNU General Public License as published by\n *  the Free Software Foundation; either version 2 of the License, or\n *  (at your option) any later version.\n *\n *  This program is distributed in the hope that it will be useful,\n *  but WITHOUT ANY WARRANTY; without even the implied warranty of\n *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n *  GNU General Public License for more details.\n *\n *  You should have received a copy of the GNU General Public License\n *  along with this program; if not, write to the Free Software\n *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.\n */\n\n/** Process Manager\n * This is the process manager of mkernel.\n * The scheduler is called either by the tick handler which is called by\n * a low priority interrupt for by the YIELD method.\n * Additionally to the scheduler the module contains also the task API.\n *\n */\n#include \"mkernel_config.h\"\n#include \"kernel.h\"\n\n#include <libopencm3/cm3/scb.h>\n#include <libopencm3/stm32/rcc.h>\n#include <libopencm3/stm32/gpio.h>\n#include <libopencm3/cm3/nvic.h>\n#include <libopencm3/cm3/systick.h>\n\n#include \"typedefs.h\"\n#include \"alarm.h\"\n#include \"machdep.h\"\n\n#include \"../../boards/disco/gfx.h\"\n#include \"../../boards/disco/lcd-spi.h\"\n\nextern DATA POINTER _os_current_stack;\n\n/* this counter instance is used for the system clock */\nstatic AlarmBaseType System_Tick_Base = { 4294967295, 1, 100 };\nt_counter System_Tick = { 0,0, &System_Tick_Base };\n\nextern void System_Tick_Handler(void);          // comminig frm the alarm module\n\n/* milliseconds since boot */\nstatic volatile uint32_t system_millis;         // simple \n\n\n/**\n * @brief sleep a given number of milli seconds\n * @details This is a busy waiting for a given number of muliseconds. It uses\n * the systick counter set by the systick handler of the libcm3 package.\n * \n * @param delay in miliseconds\n */\nvoid msleep(uint32_t delay)\n{\n        uint32_t wake = system_millis + delay;\n        while (wake > system_millis);\n}\n\n\ntypedef struct {\n    dword r0;\n    dword r1;\n    dword r2;\n    dword r3;\n    dword r12;\n    void  *lr;\n    void  *pc;\n    dword psr;\n    dword s[16];\n    dword fpscr;\n    dword fill;     // highest address on stack\n} t_exception;\n\ntypedef struct {\n    dword r4;      // lowest address\n    dword r5;\n    dword r6;\n    dword r7;\n    dword r8;\n    dword r9;\n    dword r10;\n    dword r11;\n\n    dword ret;\n                    // *** exception stack frame \n    t_exception ex;\n}  t_context;\n\n\n/**\n * @brief Create the initial stack layout for the a task\n * @details Create an initial task context on the given stack and returns pointer to it.\n * \n * @param POINTER  point to the top of the stack.\n * @param POINTER  points to the start address\n * @param pvParameters arguments passed to the task\n * @return  the place where the process context starts on the stack\n */\nDATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER addr, TASK_ARGUMENT pvParameters ) {\n    TASK_ARGUMENT args __attribute__((unused)) = pvParameters;\n    t_context *f = (t_context*) (topOfStack-sizeof(t_context));\n\n    f->ex.fill = 0x4711;\n    f->ex.fpscr = 0;\n    f->ex.psr = 0x01000000;   // reset value of the PSR\n    f->ex.pc = addr;\n    f->ex.lr = (void*)&_os_task_terminated;\n\n    f->ex.r0 = 1;\n    f->ex.r1 = 2;\n    f->ex.r2 = 3;\n    f->ex.r3 = 4;\n    f->r4 = 5;\n    f->r5 = 6;\n    f->r6 = 7;\n    f->r7 = 8;\n    f->r8 = 9;\n    f->r9= 10;\n    f->r10 = 11;\n    f->r11 = 12;\n    f->ex.r12 = 13;\n    f->ret = 0xFFFFFFED; \n    return (DATA POINTER)f;\n}\n\n/*\n * The CPU supports two stacks, in thread mode. THis function switchs to process stack \n * pointer which is stored in the variable _os_current_stack and it restores the registers\n * which have been pushed to the stack.\n*/\n\n\n\n__attribute__ ((naked)) void _machdep_restore_context() {\n   asm( \n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"LDR r12, [r0]                  \\n\\t\"\n        \"LDMIA r12!, {r4-r11, LR}       \\n\\t\"\n        \"MSR PSP, r12                   \\n\\t\"\n        \"BX lr                          \\n\\t\"\n    );    \n}\n\n/*\n * Save all application registets on the stack and set the _os_current_stack \n * value.\n */\n__attribute__ ((naked)) void _machdep_save_context() {\n    asm(\n        \"MRS r12, PSP                   \\n\\t\"\n        \"STMDB r12!, {r4-r11, LR}       \\n\\t\"\n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"STR r12, [r0]                  \\n\\t\"\n        \"BX lr                          \\n\\t\"\n    );\n}\n\n/*\n * The following bioth routines working toghether. Calling _machdep_yield will \n * force a schedule and a context switch. THe contents switch will be done in\n * handler mode by the sv_call_handfler;\n */\n__attribute__ ((naked)) void _machdep_yield(void) {    \n    asm( \"svc 0 \\n\" );       \n}\n\n/*\n * This function is called it initiates are context which to the newly scheduled\n * task.\n */\n__attribute__ ((naked)) void sv_call_handler(void) {\n    asm(    \n        \"ldr r0, =_os_current_stack     \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"ldmia r12!, {r4-r11,lr}        \\n\\t\"\n\n        \"msr psp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"\n        \"bx lr                          \\n\\t\"\n    );\n}\n\n/*  \n * The stm32 provides to stacks; this function set the msp to the kernel stack and \n * the psp to the next process to be scheduled.\n */\n__attribute__ ((naked)) void _machdep_boot(void) {    \n   asm(\n        \"mrs r0,control                 \\n\\t\"        \n        \"orr r0, r0,#0b0100             \\n\\t\"\n        \"msr control,r0                 \\n\\t\"        \n\n        \"ldr r0, =_os_current_stack     \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"msr psp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"      \n\n        \"ldr r0, =_os_kernel_stack      \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"msr msp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"\n        // enter handler mode\n\n        \"svc 0                          \\n\\t\"\n    );\n}\n\n/*\n * Initialize the scheduler. Interrupts etc are expected to the setup\n * during the system initialization phase, but the interrupts are\n * turned off.\n */\nvoid _machdep_initialize_timer(void) {\n\n    systick_set_reload(168000);\n    systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);\n    systick_counter_enable();\n    systick_interrupt_enable();\n    \n    rcc_clock_setup_hse_3v3(&hse_8mhz_3v3[CLOCK_3V3_168MHZ]);\n    /* Enable GPIOD clock. */\n    rcc_periph_clock_enable(RCC_GPIOG);\n\n    /* TODO: not related to timers */\n    gpio_mode_setup(GPIOG, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO13|GPIO14);	\n\n//if( _oil_use_preemption ) {\n//}\n}\n\n/**\n * @brief  System Clock Handler\n * @details This is the handler for the tick timer interrupt. Since T2 is not available\n * to scale down the clock rate to TICK_MS an additional in memory counter\n * is used to achieve the target clock rate.\n */\n\nvoid sys_tick_handler(void) {\n    system_millis++;\n\n    // save context\n    asm(\n        \"MRS r12, PSP                   \\n\\t\"\n        \"STMDB r12!, {r4-r11, LR}       \\n\\t\"\n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"STR r12, [r0]                  \\n\\t\"\n    );    \n \n\n#ifdef FOO\n    _os_mode = KERNEL_MODE;\n\n    _os_alarm_scheduler();\n    _os_schedule();\n\n    _os_mode = USER_MODE;\n#endif\n\n    // restore context\n       asm( \n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"LDR r12, [r0]                  \\n\\t\"\n        \"LDMIA r12!, {r4-r11, LR}       \\n\\t\"\n        \"MSR PSP, r12                   \\n\\t\"\n    );   \n}\n\n\n/*\n * Manage crical section.\n */\nvoid _machdep_critical_begin(void) {\n    void __disable_irq();\n} \n\nvoid _machdep_critical_end(void) {\n    void __enable_irq();\n}\n\n/*\n * Manage the watchdog \n */\nvoid _machdep_initialize_wdt(void) {\n#if USE_WATCHDOG == 1 \n#endif\n}\n\nvoid _machdep_clear_wdt(void) {\n#if USE_WATCHDOG == 1 \n#endif\n}\n\n/*\n * Output some trace information on the two led's of the discovery board.\n */\nvoid _machdep_trace(unsigned code ) {\n    switch(code) {\n        case TRACE_ALIVE:\n            gpio_toggle(GPIOG, GPIO13);\n            break;\n        case TRACE_PANIC_UNDERFLOW:\n            break;\n    }\n\n}\n\n/*\n * int print_hex(int value)\n *\n * Very simple routine for printing out hex constants.\n */\nstatic void print_hex(unsigned long v)\n{\n    int ndx = 0;\n    char buf[20];\n \n    buf[ndx++]='0'; buf[ndx++]='x';\n\n    do {\n        char  c = v & 0xf;\n        buf[ndx++] = (c > 9) ? '7' + c : '0' + c;\n        v = (v >> 4) & 0x0fffffff;\n    } while (v != 0);\n\n    buf[ndx++] = ' ';\n    buf[ndx++] = '\\000';\n\n    gfx_puts(buf);\n}\n\n\nstatic int row = 18;\nstatic int col = 5;\n#define nl { row = row + 18; gfx_setCursor(col,row); }\n\nvoid  hard_fault_handler(void) {\n    dword *ex = (dword*)0;\n\n    // here we are calculating the stack pointer. If you add any local defintions\n    // this might change\n    __asm__ __volatile__(\n        \"mrs %0, msp        \\n\\t\"\n        :\"=r\"(ex)\n        :\n        :\"r0\"\n    );\n    ex = ex + 11;\n\n    volatile unsigned long hfsr = (*((volatile unsigned long *)(SCB_HFSR))) ;\n    volatile unsigned long cfsr = (*((volatile unsigned long *)(SCB_CFSR))) ;\n\n    volatile unsigned long psr = ((t_exception*)ex)->psr;\n    volatile unsigned long pc  = ((t_exception*)ex)->pc;   \n    volatile unsigned long lr  = ((t_exception*)ex)->lr;\n\n    gfx_fillScreen(LCD_GREY);\n    gfx_setTextSize(1); nl;\n    \n    gfx_puts(\"hard fault exception\"); nl;\n    gfx_puts(\"hfsr:\"); print_hex(hfsr); nl;\n\n    if( cfsr & SCB_HFSR_FORCED ) {\n        gfx_puts(\"forced exception\"); nl;\n        if(cfsr & 0xFFFF0000) {\n            int i;\n            unsigned long ufsr = cfsr >> 16;\n            gfx_puts(\"ufsr:\"); print_hex(ufsr); nl;\n\n            for(i=0; i<16; ++i ) {\n                if( (ufsr & (1<<i)) == 0 )\n                    continue;\n\n                switch(i) {\n                    case 0:  gfx_puts(\"UNDEF \"); \n                        break;\n                    case 1:  gfx_puts(\"INVST \"); \n                        break;\n                    case 2:  gfx_puts(\"INVPC \");\n                        break;\n                    case 3:  gfx_puts(\"NOCP \");\n                        break;\n\n                    case 8:  gfx_puts(\"UNALLIGN\");\n                        break;\n                    case 9:  gfx_puts(\"DIVBYZERO \");\n                        break;\n                } \n            }\n            nl;\n        }\n    }\n\n    gfx_puts(\"psr :\"); print_hex(psr); nl;\n    gfx_puts(\"pc  :\"); print_hex(pc); nl;\n    gfx_puts(\"lr  :\"); print_hex(lr); nl;\n    gfx_puts(\"ccr :\"); print_hex(SCB_CCR); nl;\n    lcd_show_frame();\n\n    while(1);\n}\n\n\n\nvoid  nmi_handler() {\n}\n\nvoid  pend_sv_handler() {\n}\n\n/* Taken from\n * http://stackoverflow.com/questions/5745880/simulating-ldrex-strex-load-store-exclusive-in-cortex-m0\n*/\n\n#define unlikely(x) __builtin_expect((dword)(x),0)\n\nstatic inline dword atomic_LL(volatile void *addr) {\n    dword dest;\n\n    __asm__ __volatile__(\"ldrex %0, [%1]\" : \"=r\" (dest) : \"r\" (addr));\n    \n    return dest;\n}\n\nstatic inline dword atomic_SC(volatile void *addr, dword value) {\n    dword dest;\n\n    __asm__ __volatile__(\"strex %0, %2, [%1]\" :\n          \"=&r\" (dest) : \"r\" (addr), \"r\" (value) : \"memory\");\n\n    return dest;\n}\n\n/**\n * atomic Compare And Swap\n * @param addr Address\n * @param expected Expected value in *addr\n * @param store Value to be stored, if (*addr == expected).\n * @return 0  ok, 1 failure.\n */\ninline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store) {\n    \n    if (unlikely(atomic_LL(addr) != expected))\n        return FALSE;\n\n    return atomic_SC(addr, store) ? FALSE : TRUE;\n}",
+			"contents": "/****************************************************************************\n *  $Id: proc.c 273 2011-03-03 21:03:19Z merdmann $\n *\n *  Mon Nov 26 06:50:00 2007\n *  Copyright  2007-2011 Michael Erdmann\n *  Email:Michael.Erdmann@snafu.de\n ****************************************************************************/\n\n/*\n *  This program is free software; you can redistribute it and/or modify\n *  it under the terms of the GNU General Public License as published by\n *  the Free Software Foundation; either version 2 of the License, or\n *  (at your option) any later version.\n *\n *  This program is distributed in the hope that it will be useful,\n *  but WITHOUT ANY WARRANTY; without even the implied warranty of\n *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n *  GNU General Public License for more details.\n *\n *  You should have received a copy of the GNU General Public License\n *  along with this program; if not, write to the Free Software\n *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.\n */\n\n/** Process Manager\n * This is the process manager of mkernel.\n * The scheduler is called either by the tick handler which is called by\n * a low priority interrupt for by the YIELD method.\n * Additionally to the scheduler the module contains also the task API.\n *\n */\n#include \"mkernel_config.h\"\n#include \"kernel.h\"\n\n#include <libopencm3/cm3/scb.h>\n#include <libopencm3/stm32/rcc.h>\n#include <libopencm3/stm32/gpio.h>\n#include <libopencm3/cm3/nvic.h>\n#include <libopencm3/cm3/systick.h>\n\n#include \"typedefs.h\"\n#include \"alarm.h\"\n#include \"machdep.h\"\n\n#include \"../../boards/disco/gfx.h\"\n#include \"../../boards/disco/lcd-spi.h\"\n\nextern DATA POINTER _os_current_stack;\n\n/* this counter instance is used for the system clock */\nstatic AlarmBaseType System_Tick_Base = { 4294967295, 1, 100 };\nt_counter System_Tick = { 0,0, &System_Tick_Base };\n\nextern void System_Tick_Handler(void);          // comminig frm the alarm module\n\n/* milliseconds since boot */\nstatic volatile uint32_t system_millis;         // simple \n\n\n/**\n * @brief sleep a given number of milli seconds\n * @details This is a busy waiting for a given number of muliseconds. It uses\n * the systick counter set by the systick handler of the libcm3 package.\n * \n * @param delay in miliseconds\n */\nvoid msleep(uint32_t delay)\n{\n        uint32_t wake = system_millis + delay;\n        while (wake > system_millis);\n}\n\n\ntypedef struct {\n    dword r0;\n    dword r1;\n    dword r2;\n    dword r3;\n    dword r12;\n    void  *lr;\n    void  *pc;\n    dword psr;\n    dword s[16];\n    dword fpscr;\n    dword fill;     // highest address on stack\n} t_exception;\n\ntypedef struct {\n    dword r4;      // lowest address\n    dword r5;\n    dword r6;\n    dword r7;\n    dword r8;\n    dword r9;\n    dword r10;\n    dword r11;\n\n    dword ret;\n                    // *** exception stack frame \n    t_exception ex;\n}  t_context;\n\n\n/**\n * @brief Create the initial stack layout for the a task\n * @details Create an initial task context on the given stack and returns pointer to it.\n * \n * @param POINTER  point to the top of the stack.\n * @param POINTER  points to the start address\n * @param pvParameters arguments passed to the task\n * @return  the place where the process context starts on the stack\n */\nDATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER addr, TASK_ARGUMENT pvParameters ) {\n    TASK_ARGUMENT args __attribute__((unused)) = pvParameters;\n    t_context *f = (t_context*) (topOfStack-sizeof(t_context));\n\n    f->ex.fill = 0x4711;\n    f->ex.fpscr = 0;\n    f->ex.psr = 0x01000000;   // reset value of the PSR\n    f->ex.pc = addr;\n    f->ex.lr = (void*)&_os_task_terminated;\n\n    f->ex.r0 = 1;\n    f->ex.r1 = 2;\n    f->ex.r2 = 3;\n    f->ex.r3 = 4;\n    f->r4 = 5;\n    f->r5 = 6;\n    f->r6 = 7;\n    f->r7 = 8;\n    f->r8 = 9;\n    f->r9= 10;\n    f->r10 = 11;\n    f->r11 = 12;\n    f->ex.r12 = 13;\n    f->ret = 0xFFFFFFED; \n    return (DATA POINTER)f;\n}\n\n/*\n * The following bioth routines working toghether. Calling _machdep_yield will \n * force a schedule and a context switch. THe contents switch will be done in\n * handler mode by the sv_call_handfler;\n */\n__attribute__ ((naked)) void _machdep_yield(void) {    \n    asm( \"svc 0 \\n\" );       \n}\n\n/*\n * This function is called it initiates are context which to the newly scheduled\n * task.\n */\n__attribute__ ((naked)) void sv_call_handler(void) {\n    asm(    \n        \"ldr r0, =_os_current_stack     \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"ldmia r12!, {r4-r11,lr}        \\n\\t\"\n\n        \"msr psp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"\n        \"bx lr                          \\n\\t\"\n    );\n}\n\n/*  \n * The stm32 provides to stacks; this function set the msp to the kernel stack and \n * the psp to the next process to be scheduled.\n */\nvoid _machdep_boot(void) {    \n   asm(\n        \"mrs r0,control                 \\n\\t\"        \n        \"orr r0, r0,#0b0100             \\n\\t\"\n        \"msr control,r0                 \\n\\t\"        \n\n        \"ldr r0, =_os_current_stack     \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"msr psp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"      \n\n        \"ldr r0, =_os_kernel_stack      \\n\\t\"\n        \"ldr r12,[r0,#0]                \\n\\t\"\n        \"msr msp,r12                    \\n\\t\"\n        \"isb                            \\n\\t\"\n    );\n}\n\n/*\n * Initialize the scheduler. Interrupts etc are expected to the setup\n * during the system initialization phase, but the interrupts are\n * turned off.\n */\nvoid _machdep_initialize_timer(void) {\n\n    systick_set_reload(168000);\n    systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);\n    systick_counter_enable();\n    systick_interrupt_enable();\n    \n    rcc_clock_setup_hse_3v3(&hse_8mhz_3v3[CLOCK_3V3_168MHZ]);\n    /* Enable GPIOD clock. */\n    rcc_periph_clock_enable(RCC_GPIOG);\n\n    /* TODO: not related to timers */\n    gpio_mode_setup(GPIOG, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO13|GPIO14);	\n\n//if( _oil_use_preemption ) {\n//}\n}\n\n/**\n * @brief  System Clock Handler\n * @details This is the handler for the tick timer interrupt. Since T2 is not available\n * to scale down the clock rate to TICK_MS an additional in memory counter\n * is used to achieve the target clock rate.\n */\n__attribute__ ((naked)) void sys_tick_handler(void) {\n    // save context\n    asm(\n        \"MRS r12, PSP                   \\n\\t\"\n        \"STMDB r12!, {r4-r11, LR}       \\n\\t\"\n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"STR r12, [r0]                  \\n\\t\"\n    );    \n \n   system_millis++;\n\n    _os_mode = KERNEL_MODE;\n\n    _os_alarm_scheduler();\n    _os_schedule();\n\n    _os_mode = USER_MODE;\n\n\n    // restore context\n    asm( \n        \"LDR r0, =_os_current_stack     \\n\\t\"\n        \"LDR r12, [r0]                  \\n\\t\"\n        \"LDMIA r12!, {r4-r11, LR}       \\n\\t\"\n        \"MSR PSP, r12                   \\n\\t\"\n        \"bx lr                          \\n\\t\"\n    );   \n}\n\n/**\n * @brief Create a banner\n * @details This procedure create a banner\n */\nvoid _machdep_banner() {\n    sdram_init();\n    lcd_spi_init();\n\n    gfx_init(lcd_draw_pixel, 240, 320);\n    \n    gfx_fillScreen(LCD_GREY);\n    gfx_setTextSize(1);\n    gfx_setCursor(15, 30);\n    gfx_puts(\"STM32F4-DISCO\");\n\n    lcd_show_frame();\n}\n\n/*\n * Manage crical section.\n */\nvoid _machdep_critical_begin(void) {\n    void __disable_irq();\n} \n\nvoid _machdep_critical_end(void) {\n    void __enable_irq();\n}\n\n/*\n * Manage the watchdog \n */\nvoid _machdep_initialize_wdt(void) {\n#if USE_WATCHDOG == 1 \n#endif\n}\n\nvoid _machdep_clear_wdt(void) {\n#if USE_WATCHDOG == 1 \n#endif\n}\n\n/*\n * Output some trace information on the two led's of the discovery board.\n */\nvoid _machdep_trace(unsigned code ) {\n    switch(code) {\n        case TRACE_ALIVE:\n            gpio_toggle(GPIOG, GPIO13);\n            break;\n        case TRACE_PANIC_UNDERFLOW:\n            break;\n    }\n\n}\n\n/*\n * int print_hex(int value)\n *\n * Very simple routine for printing out hex constants.\n */\nstatic void print_hex(unsigned long v)\n{\n    int ndx = 0;\n    char buf[20];\n \n    buf[ndx++]='0'; buf[ndx++]='x';\n\n    do {\n        char  c = v & 0xf;\n        buf[ndx++] = (c > 9) ? '7' + c : '0' + c;\n        v = (v >> 4) & 0x0fffffff;\n    } while (v != 0);\n\n    buf[ndx++] = ' ';\n    buf[ndx++] = '\\000';\n\n    gfx_puts(buf);\n}\n\n\nstatic int row = 18;\nstatic int col = 5;\n#define nl { row = row + 18; gfx_setCursor(col,row); }\n\n/**\n * @brief [brief description]\n * @details [long description]\n */\nvoid  hard_fault_handler(void) {\n    dword *ex = (dword*)0;\n\n    // here we are calculating the stack pointer. If you add any local defintions\n    // this might change\n    __asm__ __volatile__(\n        \"mrs %0, msp        \\n\\t\"\n        :\"=r\"(ex)\n        :\n        :\"r0\"\n    );\n    ex = ex + 11;\n\n    volatile unsigned long hfsr = (*((volatile unsigned long *)(SCB_HFSR))) ;\n    volatile unsigned long cfsr = (*((volatile unsigned long *)(SCB_CFSR))) ;\n\n    volatile unsigned long psr = ((t_exception*)ex)->psr;\n    volatile unsigned long pc  = ((t_exception*)ex)->pc;   \n    volatile unsigned long lr  = ((t_exception*)ex)->lr;\n\n    gfx_fillScreen(LCD_GREY);\n    gfx_setTextSize(1); nl;\n    \n    gfx_puts(\"hard fault exception\"); nl;\n    gfx_puts(\"hfsr:\"); print_hex(hfsr); nl;\n\n    if( cfsr & SCB_HFSR_FORCED ) {\n        gfx_puts(\"forced exception\"); nl;\n        if(cfsr & 0xFFFF0000) {\n            int i;\n            unsigned long ufsr = cfsr >> 16;\n            gfx_puts(\"ufsr:\"); print_hex(ufsr); nl;\n\n            for(i=0; i<16; ++i ) {\n                if( (ufsr & (1<<i)) == 0 )\n                    continue;\n\n                switch(i) {\n                    case 0:  gfx_puts(\"UNDEF \"); \n                        break;\n                    case 1:  gfx_puts(\"INVST \"); \n                        break;\n                    case 2:  gfx_puts(\"INVPC \");\n                        break;\n                    case 3:  gfx_puts(\"NOCP \");\n                        break;\n\n                    case 8:  gfx_puts(\"UNALLIGN\");\n                        break;\n                    case 9:  gfx_puts(\"DIVBYZERO \");\n                        break;\n                } \n            }\n            nl;\n        }\n    }\n\n    gfx_puts(\"psr :\"); print_hex(psr); nl;\n    gfx_puts(\"pc  :\"); print_hex(pc); nl;\n    gfx_puts(\"lr  :\"); print_hex(lr); nl;\n    gfx_puts(\"ccr :\"); print_hex(SCB_CCR); nl;\n    lcd_show_frame();\n\n    while(1);\n}\n\n\n/**\n * @brief [brief description]\n * @details [long description]\n */\nvoid  nmi_handler() {\n}\n\n/**\n * @brief [brief description]\n * @details [long description]\n * \n * @param d [description]\n * @return [description]\n */\n__attribute__ ((naked)) void  pend_sv_handler() {\n\n}\n\n/* Taken from\n * http://stackoverflow.com/questions/5745880/simulating-ldrex-strex-load-store-exclusive-in-cortex-m0\n*/\n\n#define unlikely(x) __builtin_expect((dword)(x),0)\n\nstatic inline dword atomic_LL(volatile void *addr) {\n    dword dest;\n\n    __asm__ __volatile__(\"ldrex %0, [%1]\" : \"=r\" (dest) : \"r\" (addr));\n    \n    return dest;\n}\n\nstatic inline dword atomic_SC(volatile void *addr, dword value) {\n    dword dest;\n\n    __asm__ __volatile__(\"strex %0, %2, [%1]\" :\n          \"=&r\" (dest) : \"r\" (addr), \"r\" (value) : \"memory\");\n\n    return dest;\n}\n\n/**\n * atomic Compare And Swap\n * @param addr Address\n * @param expected Expected value in *addr\n * @param store Value to be stored, if (*addr == expected).\n * @return 0  ok, 1 failure.\n */\ninline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store) {\n    \n    if (unlikely(atomic_LL(addr) != expected))\n        return FALSE;\n\n    return atomic_SC(addr, store) ? FALSE : TRUE;\n}",
 			"file": "trunk/target/cpus/stm32f/machdep.c",
-			"file_size": 12263,
-			"file_write_time": 130767128243919287,
+			"file_size": 11410,
+			"file_write_time": 130767995760468012,
 			"settings":
 			{
-				"buffer_size": 12050,
+				"buffer_size": 11667,
 				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "trunk/target/apps/myapp/myapp.c",
-			"settings":
-			{
-				"buffer_size": 1648,
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "trunk/target/apps/myapp/myapp.oil",
-			"settings":
-			{
-				"buffer_size": 1860,
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "trunk/target/include/system_tick.oil",
-			"settings":
-			{
-				"buffer_size": 1114,
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "trunk/target/kernel/proc.c",
-			"settings":
-			{
-				"buffer_size": 7991,
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "trunk/target/include/proc.h",
-			"settings":
-			{
-				"buffer_size": 8973,
-				"line_ending": "Windows"
-			}
-		},
-		{
-			"file": "trunk/target/kernel/execution.c",
-			"settings":
-			{
-				"buffer_size": 2158,
-				"line_ending": "Windows"
-			}
-		},
-		{
-			"file": "trunk/tools/oil/sysgen.c",
-			"settings":
-			{
-				"buffer_size": 21038,
-				"line_ending": "Windows"
-			}
-		},
-		{
-			"file": "/d/MIchael/Documents/Sources/mkernel4arm/trunk/target/kernel/alarm.c",
-			"settings":
-			{
-				"buffer_size": 3028,
-				"line_ending": "Windows"
-			}
-		},
-		{
-			"file": "trunk/target/apps/myapp/CMakeLists.txt",
-			"settings":
-			{
-				"buffer_size": 2033,
-				"line_ending": "Windows"
 			}
 		}
 	],
@@ -297,48 +217,47 @@
 	"expanded_folders":
 	[
 		"/D/Michael/Documents/Sources/mkernel4arm",
-		"/D/Michael/Documents/Sources/mkernel4arm/tools/oil",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/tools/oil"
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f"
 	],
 	"file_history":
 	[
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f/machdep.c",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/include/proc.h",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/proc.c",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f/CMakeLists.txt",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/execution.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/myapp.c",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/myapp.oil",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/CMakeLists.txt",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/idle.c",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/include/machdep.h",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/include/system_tick.oil",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/tools/oil/sysgen.c",
+		"/d/MIchael/Documents/Sources/mkernel4arm/trunk/target/kernel/alarm.c",
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f/machdep.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/stm32f/apps/myapp/myapp_init.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/gfx.h",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/gfx.c",
 		"/d/MIchael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/dg.sh",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/CMakeLists.txt",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/execution.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/lcd-spi.h",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f/mkernel_config.h",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/lcd-spi.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/CMakeLists.txt",
 		"/d/MIchael/Documents/Sources/mkernel4arm/README.md",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/lcd-serial.c",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/myapp.oil",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/CMakeLists.txt",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/cpus/stm32f/CMakeLists.txt",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/kernel/CMakeLists.txt",
 		"/d/Michael/Documents/SOurces/mkernel4arm/trunk/toolchains/arm-none-eabi.txt",
 		"/d/Michael/Documents/SOurces/mkernel4arm/trunk/target/CMakeLists.txt",
 		"/d/MIchael/Documents/Sources/mkernel4arm/trunk/target/apps/CMakeLists.txt",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/apps/myapp/CMakeLists.txt",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/console.c",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/tools/oil/sysgen.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/boards/disco/clock.h",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/CMakeLists.txt",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/include/proc.h",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/proc.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/resource.c",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/kernel/idle.c",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/target/include/kernel.h",
 		"/d/Michael/Documents/SOurces/mkernel4arm/Makefile",
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/tools/CMakeLists.txt",
@@ -433,10 +352,7 @@
 		"/D/Michael/Documents/Sources/mkernel4arm/trunk/oil/oil.h",
 		"/D/Michael/Downloads/stm32f4-gnat-rts-20150406.tar/stm32f4-gnat-rts-20150406/stm32f4-gnat-rts-20150406/INSTALL",
 		"/d/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/Makefile",
-		"/D/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/execution.c",
-		"/d/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/myapp.oil",
-		"/d/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/myapp.c",
-		"/d/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/myapp.iol"
+		"/D/Michael/Documents/Sources/mkernel4arm/trunk/stm32f/execution.c"
 	],
 	"find":
 	{
@@ -550,111 +466,24 @@
 	"groups":
 	[
 		{
-			"selected": 1,
+			"selected": 0,
 			"sheets":
 			[
 				{
 					"buffer": 0,
-					"file": "trunk/target/kernel/idle.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 1792,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								0,
-								0
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage"
-						},
-						"translation.x": 0.0,
-						"translation.y": 0.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 8,
-					"type": "text"
-				},
-				{
-					"buffer": 1,
 					"file": "trunk/target/cpus/stm32f/machdep.c",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 12050,
+						"buffer_size": 11667,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								7111,
-								7111
+								6065,
+								6065
 							]
 						],
 						"settings":
@@ -662,21 +491,11 @@
 							"BracketHighlighterBusy": false,
 							"bh_regions":
 							[
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
 								"bh_angle",
 								"bh_angle_center",
 								"bh_angle_open",
 								"bh_angle_close",
 								"bh_angle_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
 								"bh_double_quote",
 								"bh_double_quote_center",
 								"bh_double_quote_open",
@@ -687,839 +506,56 @@
 								"bh_tag_open",
 								"bh_tag_close",
 								"bh_tag_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
+								"bh_round",
+								"bh_round_center",
+								"bh_round_open",
+								"bh_round_close",
+								"bh_round_content",
 								"bh_curly",
 								"bh_curly_center",
 								"bh_curly_open",
 								"bh_curly_close",
 								"bh_curly_content",
+								"bh_unmatched",
+								"bh_unmatched_center",
+								"bh_unmatched_open",
+								"bh_unmatched_close",
+								"bh_unmatched_content",
+								"bh_square",
+								"bh_square_center",
+								"bh_square_open",
+								"bh_square_close",
+								"bh_square_content",
+								"bh_regex",
+								"bh_regex_center",
+								"bh_regex_open",
+								"bh_regex_close",
+								"bh_regex_content",
+								"bh_default",
+								"bh_default_center",
+								"bh_default_open",
+								"bh_default_close",
+								"bh_default_content",
 								"bh_c_define",
 								"bh_c_define_center",
 								"bh_c_define_open",
 								"bh_c_define_close",
-								"bh_c_define_content"
+								"bh_c_define_content",
+								"bh_single_quote",
+								"bh_single_quote_center",
+								"bh_single_quote_open",
+								"bh_single_quote_close",
+								"bh_single_quote_content"
 							],
 							"syntax": "Packages/C++/C.tmLanguage",
 							"tab_size": 4,
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 4286.0,
+						"translation.y": 3384.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 0,
-					"type": "text"
-				},
-				{
-					"buffer": 2,
-					"file": "trunk/target/apps/myapp/myapp.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 1648,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								0,
-								0
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage",
-							"tab_size": 4,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": -0.0,
-						"translation.y": 540.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 2,
-					"type": "text"
-				},
-				{
-					"buffer": 3,
-					"file": "trunk/target/apps/myapp/myapp.oil",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 1860,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								1177,
-								1177
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content"
-							],
-							"syntax": "Packages/Text/Plain text.tmLanguage",
-							"tab_size": 8,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": 0.0,
-						"translation.y": 270.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 6,
-					"type": "text"
-				},
-				{
-					"buffer": 4,
-					"file": "trunk/target/include/system_tick.oil",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 1114,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								0,
-								0
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content"
-							],
-							"syntax": "Packages/Text/Plain text.tmLanguage"
-						},
-						"translation.x": 0.0,
-						"translation.y": 0.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 9,
-					"type": "text"
-				},
-				{
-					"buffer": 5,
-					"file": "trunk/target/kernel/proc.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 7991,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								3388,
-								3388
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage",
-							"tab_size": 2,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": 0.0,
-						"translation.y": 1404.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 5,
-					"type": "text"
-				},
-				{
-					"buffer": 6,
-					"file": "trunk/target/include/proc.h",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 8973,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								3750,
-								3764
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage",
-							"translate_tabs_to_spaces": false
-						},
-						"translation.x": -0.0,
-						"translation.y": 1296.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 7,
-					"type": "text"
-				},
-				{
-					"buffer": 7,
-					"file": "trunk/target/kernel/execution.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 2158,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								1855,
-								1855
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage",
-							"tab_size": 4,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": 0.0,
-						"translation.y": 540.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 1,
-					"type": "text"
-				},
-				{
-					"buffer": 8,
-					"file": "trunk/tools/oil/sysgen.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 21038,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								20837,
-								20837
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage",
-							"translate_tabs_to_spaces": false
-						},
-						"translation.x": 0.0,
-						"translation.y": 14545.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 4,
-					"type": "text"
-				},
-				{
-					"buffer": 9,
-					"file": "/d/MIchael/Documents/Sources/mkernel4arm/trunk/target/kernel/alarm.c",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 3028,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								1786,
-								1809
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content"
-							],
-							"syntax": "Packages/C++/C.tmLanguage"
-						},
-						"translation.x": 0.0,
-						"translation.y": 378.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 3,
-					"type": "text"
-				},
-				{
-					"buffer": 10,
-					"file": "trunk/target/apps/myapp/CMakeLists.txt",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 2033,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								844,
-								844
-							]
-						],
-						"settings":
-						{
-							"BracketHighlighterBusy": false,
-							"bh_regions":
-							[
-								"bh_c_define",
-								"bh_c_define_center",
-								"bh_c_define_open",
-								"bh_c_define_close",
-								"bh_c_define_content",
-								"bh_single_quote",
-								"bh_single_quote_center",
-								"bh_single_quote_open",
-								"bh_single_quote_close",
-								"bh_single_quote_content",
-								"bh_default",
-								"bh_default_center",
-								"bh_default_open",
-								"bh_default_close",
-								"bh_default_content",
-								"bh_square",
-								"bh_square_center",
-								"bh_square_open",
-								"bh_square_close",
-								"bh_square_content",
-								"bh_round",
-								"bh_round_center",
-								"bh_round_open",
-								"bh_round_close",
-								"bh_round_content",
-								"bh_regex",
-								"bh_regex_center",
-								"bh_regex_open",
-								"bh_regex_close",
-								"bh_regex_content",
-								"bh_curly",
-								"bh_curly_center",
-								"bh_curly_open",
-								"bh_curly_close",
-								"bh_curly_content",
-								"bh_double_quote",
-								"bh_double_quote_center",
-								"bh_double_quote_open",
-								"bh_double_quote_close",
-								"bh_double_quote_content",
-								"bh_angle",
-								"bh_angle_center",
-								"bh_angle_open",
-								"bh_angle_close",
-								"bh_angle_content",
-								"bh_unmatched",
-								"bh_unmatched_center",
-								"bh_unmatched_open",
-								"bh_unmatched_close",
-								"bh_unmatched_content",
-								"bh_tag",
-								"bh_tag_center",
-								"bh_tag_open",
-								"bh_tag_close",
-								"bh_tag_content"
-							],
-							"syntax": "Packages/CMake/CMake.tmLanguage"
-						},
-						"translation.x": 24.0,
-						"translation.y": -0.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 10,
 					"type": "text"
 				}
 			]

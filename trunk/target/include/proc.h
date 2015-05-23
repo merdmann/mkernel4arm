@@ -242,6 +242,13 @@ void _os_claim_tcb(t_task_id id);
  */
 void _os_release_tcb( t_task_id id);
 
+/**
+ * @brief Trap in case the process terminates unexpected
+ * @details This is expected to be called in case the process terminates due to an
+ *          stack underflow.
+ */
+void _os_process_trap(void);
+
 /** _os_kernel_stack should not be used by any application since it is
  * used as an interfaces between the oil generated code and the kernel.
  *

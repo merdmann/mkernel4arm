@@ -64,8 +64,5 @@ void _machdep_trace(unsigned);
 
 inline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store);
 
-// context handling
-void _machdep_restore_context(void);
-void _machdep_save_context(void);
 
 #endif
