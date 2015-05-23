@@ -29,7 +29,7 @@ set(OOCD_BOARD stm32f4discovery)
 
 set(OOCD_ARGS "${OOCD_ARGS} -f interface/${OOCD_INTERFACE}.cfg")
 set(OOCD_ARGS "${OOCD_ARGS} -f board/${OOCD_BOARD}.cfg")
-#set(OOCD_ARGS "${OOCD_ARGS} -c ft2232_serial ${OOCD_SERIAL}" )
+##set(OOCD_ARGS "${OOCD_ARGS} -c ft2232_serial ${OOCD_SERIAL}" )
 set(OOCD_ARGS "${OOCD_ARGS} -c init")
 set(OOCD_ARGS "${OOCD_ARGS} -c \"reset init\"")
 set(OOCD_ARGS "${OOCD_ARGS} -c \"flash write_image erase ../../bin/myapp.elf\"")
@@ -37,8 +37,13 @@ set(OOCD_ARGS "${OOCD_ARGS} -c reset")
 set(OOCD_ARGS "${OOCD_ARGS} -c shutdown")
 
 
-set(CMAKE_C_FLAGS "-g -ggdb -Os -mcpu=cortex-m4 -mthumb -Wextra -Wshadow -Wimplicit-function-declaration")
-set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes")
+## this is the stuff a specfied in: 
+## JPL Institutional Coding Standard for the C Programming Language
+
+##set(JPL "-Wtraditional -Wshadow -Wpointer-arith -Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wconversion")
+
+set(CMAKE_C_FLAGS "-g -ggdb -Os -mcpu=cortex-m4 -mthumb -Wall -pedantic -std=iso9899:1999 ")
+set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} ${JPL}")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -fno-common -ffunction-sections -fdata-sections")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 

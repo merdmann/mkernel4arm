@@ -96,8 +96,8 @@ void _os_schedule() {
     t_task_id last_task_id;
 
     /* if non preemptable tasks is running or an admin task is pedning no recscheduling */
-    if( (_TCB[_os_my_task_id].descriptor->schedule == NON  && _TCB[_os_my_task_id].state == PROC_COMPUTING) 
-      || _TCB[_os_my_task_id].admin != NULL_TASK_ID )
+    if( (_TCB[_os_my_task_id].descriptor->schedule == NON && _TCB[_os_my_task_id].state == PROC_COMPUTING) 
+        || _TCB[_os_my_task_id].admin != NULL_TASK_ID )
         return;
 
     /* save the context by storing the current stack */
@@ -107,11 +107,11 @@ void _os_schedule() {
 
     /* define the startpoint for the scan */
     if( _os_next_task != NULL_TASK_ID ) {
-       	start = _os_next_task;
-    	_os_next_task = NULL_TASK_ID;
+      start = _os_next_task;
+      _os_next_task = NULL_TASK_ID;
     }
     else
-   	start = 0;
+   	  start = 0;
 
     TaskEndHook(_os_my_task_id);
 
@@ -125,45 +125,44 @@ void _os_schedule() {
        byte state = PROC_FREE;
 
        while ( i < _oil_max_tcb ) {
-    	   current = (start + i++) % _oil_max_tcb;
+    	     current = (start + i++) % _oil_max_tcb;
            state = _TCB[current].state;
 
            /* tasks with this flags set are manipulated by a task */
            if( _TCB[current].admin != NULL_TASK_ID || state == PROC_SUSPENDED )
-        	   continue;
+        	     continue;
 
            if( state == PROC_WAIT_RESOURCE ) {
-        	   /* OSEK/VDX: we are waiting for an resource to become free */
+        	     /* OSEK/VDX: we are waiting for an resource to become free */
                ResourceType p = (ResourceType)(_TCB[current].wait_addr);
 
                if( p->owner == NO_OWNER ) {
-            	   p->owner = current;
-
-         		   state = PROC_COMPUTING;
+                   p->owner = current;
+         		       state = PROC_COMPUTING;
                	   break;
                }
            }
            else if( state == PROC_WAIT_EVENT ) {
                /* OSEK/VDX: process wait for an set event flag, check for events */
                if( _TCB[current].event & _TCB[current].mask ) {
-            	   state = PROC_COMPUTING;
+                   state = PROC_COMPUTING;
                    break;
                }
            }
            else if( state == PROC_COMPUTING ) {
                break;
-          }
+           }
        }
        if( state == PROC_COMPUTING ) {
-    	   /*
-    	    * if the current task id has not changed we can assume that nobody else
-    	    * has executed schedule while we have searched for an executable task
-     	    */
-     	   if( _os_my_task_id == last_task_id ) {
-    		     _TCB[current].state = state;
-    		     _os_my_task_id = current;
-       		   _os_current_stack = _TCB[current].stack;
-    	   }
+    	     /*
+    	      * if the current task id has not changed we can assume that nobody else
+    	      * has executed schedule while we have searched for an executable task
+     	      */
+     	     if( _os_my_task_id == last_task_id ) {
+    		       _TCB[current].state = state;
+    		       _os_my_task_id = current;
+       		     _os_current_stack = _TCB[current].stack;
+    	     }
        }
     }
 

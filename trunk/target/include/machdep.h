@@ -35,7 +35,7 @@
 #include "typedefs.h"
 #include "proc.h"
 
-DATA POINTER _machdep_initialize_stack(DATA POINTER, DATA POINTER, TASK_ARGUMENT); 
+DATA POINTER _machdep_initialize_stack(DATA POINTER, t_entry, TASK_ARGUMENT); 
 void _machdep_initialize_timer(void);
 void _machdep_yield(void);
 
@@ -62,7 +62,7 @@ void _machdep_clear_wdt(void);
 
 void _machdep_trace(unsigned);
 
-inline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store);
+BOOL _machdep_cas_byte(volatile void*, dword, dword);
 
 
 #endif

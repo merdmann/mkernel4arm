@@ -143,6 +143,14 @@ typedef TaskType* TaskRefType;
 /** VDX/OIL: non preemptive scheduling */
 #define NON	0
 
+
+/** Task Argument. A task is represented as function which gets one argument of
+ *  the type TASK_ARGUMENT.
+ */
+typedef POINTER TASK_ARGUMENT;
+
+typedef void (*t_entry)(TASK_ARGUMENT);
+
 /** the static part of an task.
  * A process descriptor constist of an static part which describes the process
  * and a dynamic part which realtes to the dynamic behaviour of the task.
@@ -151,9 +159,10 @@ typedef struct {
 	byte max_activations;
 	byte priority;
 	byte schedule;
-	CODE POINTER entry;
+	t_entry entry;
 	DATA POINTER tos;
 } t_task_descriptor;
+
 
 
 /** The task control block. The scheduling is based on this control block. The
@@ -194,17 +203,6 @@ extern BOOL _oil_use_preemption;
  *
  */
 extern void _os_schedule( void );
-
-/** _os_yield may be used by user tasks to force a reschedule. Under normal
- * circumstances there is not need to use this function since the API's are
- * invoking this function by them self if needed.
- */
-
-
-/** Task Argument. A task is represented as function which gets one argument of
- *  the type TASK_ARGUMENT.
- */
-typedef POINTER TASK_ARGUMENT;
 
 /*
  * This method is used by the system generator to create a task

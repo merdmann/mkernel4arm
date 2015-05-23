@@ -74,7 +74,6 @@ void msleep(uint32_t delay)
         while (wake > system_millis);
 }
 
-
 typedef struct {
     dword r0;
     dword r1;
@@ -114,14 +113,14 @@ typedef struct {
  * @param pvParameters arguments passed to the task
  * @return  the place where the process context starts on the stack
  */
-DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, DATA POINTER addr, TASK_ARGUMENT pvParameters ) {
+DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, t_entry entry, TASK_ARGUMENT pvParameters ) {
     TASK_ARGUMENT args __attribute__((unused)) = pvParameters;
     t_context *f = (t_context*) (topOfStack-sizeof(t_context));
 
     f->ex.fill = 0x4711;
     f->ex.fpscr = 0;
-    f->ex.psr = 0x01000000;   // reset value of the PSR
-    f->ex.pc = addr;
+    f->ex.psr = 0x01000000;                 // reset value of the PSR
+    f->ex.pc = (POINTER)entry;              
     f->ex.lr = (void*)&_os_task_terminated;
 
     f->ex.r0 = 1;
@@ -233,7 +232,7 @@ void sys_tick_handler(void) {
     _os_schedule();
 
     if( system_millis % 1000 == 0 ) {
-
+        //portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
     }
 
     _os_mode = USER_MODE;
