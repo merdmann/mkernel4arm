@@ -52,7 +52,6 @@
 #include "machdep.h"
 
 void _os_initialize_alarm() {
-	_machdep_initialize_timer();
 }
 
 

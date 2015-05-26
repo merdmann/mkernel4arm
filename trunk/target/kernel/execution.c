@@ -53,7 +53,10 @@ void StartOS(AppModeType mode) {
     _os_mode = KERNEL_MODE;
    
     _oil_init_application_mode(mode);
+    
     _os_initialize_scheduler();
+    _os_initialize_alarm();
+
     _oil_device_init();
 
     _os_schedule();
@@ -62,8 +65,9 @@ void StartOS(AppModeType mode) {
 
     StartupHook();
     /* we are switching now to user mode and start the idle task */
-    _machdep_boot();            // setup stack model etc ....
-    _os_initialize_alarm();
+    _machdep_initialize_timer();
+    _machdep_boot();            // ´setup stacks and init interrupts
+    
     _machdep_yield();
 }
 

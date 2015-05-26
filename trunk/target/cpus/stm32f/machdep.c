@@ -37,6 +37,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
+#include <libopencm3/cm3/scb.h>
 #include <libopencmsis/core_cm3.h>
 
 #include "typedefs.h"
@@ -48,6 +49,8 @@
 
 extern DATA POINTER _os_current_stack;
 
+#define ref(x)  ((dword*)(x))
+
 /* this counter instance is used for the system clock */
 static AlarmBaseType System_Tick_Base = { (unsigned)0x7fffffff, 1, 100 };
 t_counter System_Tick = { 0,0, &System_Tick_Base };
@@ -56,6 +59,8 @@ t_counter System_Tick = { 0,0, &System_Tick_Base };
 
 void msleep(uint32_t);
 void sdram_init(void);
+void ConfigurePendSV(dword);
+
 
 /* milliseconds since boot */
 static volatile uint32_t system_millis;         // simple 
@@ -136,7 +141,7 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, t_entry entry, T
     f->r10 = 11;
     f->r11 = 12;
     f->ex.r12 = 13;
-    f->ret = 0xFFFFFFED; 
+    f->ret = 0xFFFFFFED;   // return to thread mode 
     return (DATA POINTER)f;
 }
 
@@ -146,7 +151,7 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, t_entry entry, T
  * handler mode by the sv_call_handfler;
  */
 __attribute__ ((naked)) void _machdep_yield(void) {    
-    asm( "svc 0 \n" );       
+    __asm volatile ( "svc 0 \n" );       
 }
 
 /*
@@ -154,42 +159,55 @@ __attribute__ ((naked)) void _machdep_yield(void) {
  * task.
  */
 __attribute__ ((naked)) void sv_call_handler(void) {
-    asm(    
-        "ldr r0, =_os_current_stack     \n\t"
-        "ldr r12,[r0,#0]                \n\t"
-        "ldmia r12!, {r4-r11,lr}        \n\t"
-
-        "msr psp,r12                    \n\t"
-        "isb                            \n\t"
-        "bx lr                          \n\t"
+    __asm volatile (   
+      "   ldr r0, =_os_current_stack        \n"
+      "   ldr r0,[r0,#0]                    \n"
+      "   ldmia r0!, {r4-r11,lr}            \n"
+      "   msr psp, r0                       \n"
+      "   isb                               \n"
+      "   bx lr                             \n"
     );
 }
 
-/*  
- * The stm32 provides to stacks; this function set the msp to the kernel stack and 
- * the psp to the next process to be scheduled.
- */
+//This saves the context on the PSP, the Cortex-M3 pushes the other registers using hardwar
+static inline void _machdep_save_context(void){
+    __asm volatile (
+    "   mrs r0, PSP                         \n"
+    "   stmdb r0!, {r4-r11,lr}              \n" // save context of current thread
+    "   msr psp,r0                          \n"
+    "   ldr r12, =_os_current_stack         \n"
+    "   str r0,[r12]                        \n"
+    );
+}
+
+static inline void _machdep_restore_context(){
+    __asm volatile (
+      "   ldr r0, =_os_current_stack        \n"
+      "   ldr r0,[r0,#0]                    \n"
+
+     //"   mov lr, r4                         \n"
+     "   ldmia r0!, {r4-r11,lr}             \n" // load context of new thread
+     "   msr PSP, r0                        \n"
+     );
+}
+
 
  /**
   * @brief enter multitaksing mode
   * @details The stm32 provides to stacks; this function set the msp to the kernel stack and 
   *          the psp to the next process to be scheduled.
   */
-void _machdep_boot(void) {    
+inline void _machdep_boot(void) {    
    __asm volatile (
-        "mrs r0,control                 \n\t"        
-        "orr r0, r0,#0b0100             \n\t"
-        "msr control,r0                 \n\t"        
-
-        "ldr r0, =_os_current_stack     \n\t"
-        "ldr r12,[r0,#0]                \n\t"
-        "msr psp,r12                    \n\t"
-        "isb                            \n\t"      
-
-        "ldr r0, =_os_kernel_stack      \n\t"
-        "ldr r12,[r0,#0]                \n\t"
-        "msr msp,r12                    \n\t"
-        "isb                            \n\t"
+        "    ldr r0, =_os_current_stack     \n"
+        "    ldr r12,[r0,#0]                \n"
+        "    msr psp,r12                    \n"
+        "    ldr r0, =_os_kernel_stack      \n"
+        "    ldr r12,[r0,#0]                \n"
+        "    msr msp,r12                    \n"
+        "    isb                            \n"
+        "    cpsie i                        \n"  
+        "    cpsie f                        \n"
     );
 }
 
@@ -199,7 +217,6 @@ void _machdep_boot(void) {
  * turned off.
  */
 void _machdep_initialize_timer(void) {
-
     systick_set_reload(168000);
     systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);
     systick_counter_enable();
@@ -223,19 +240,16 @@ void _machdep_initialize_timer(void) {
  * is used to achieve the target clock rate.
  */
 void sys_tick_handler(void) {
-    // save context
-    system_millis++;
-
     _os_mode = KERNEL_MODE;
-
     _os_alarm_scheduler();
-    _os_schedule();
+    //_os_schedule();
+    _os_mode = USER_MODE;
 
-    if( system_millis % 1000 == 0 ) {
-        //portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+    /* this is the preemption timer */
+    if( ++system_millis % 1000 == 0 ) {
+        SCB_ICSR |= SCB_ICSR_PENDSVSET;
     }
 
-    _os_mode = USER_MODE;
 }
 
 /**
@@ -340,8 +354,8 @@ void  hard_fault_handler(void) {
     );
     ex = ex + 11;
 
-    volatile unsigned long hfsr = (*((volatile unsigned long *)(SCB_HFSR))) ;
-    volatile unsigned long cfsr = (*((volatile unsigned long *)(SCB_CFSR))) ;
+    volatile unsigned long hfsr = SCB_HFSR ;
+    volatile unsigned long cfsr = SCB_CFSR ;
 
     volatile dword psr = (dword)((t_exception*)ex)->psr;
     volatile dword pc  = (dword)((t_exception*)ex)->pc;   
@@ -409,23 +423,18 @@ void  nmi_handler() {
  * @return [description]
  */
 __attribute__ ((naked)) void  pend_sv_handler() {
-
-    __asm volatile(
-        "MRS r12, PSP                   \n\t"
-        "STMDB r12!, {r4-r11, LR}       \n\t"
-        "LDR r0, =_os_current_stack     \n\t"
-        "STR r12, [r0]                  \n\t"
-    );    
- 
+    _machdep_save_context();
+    // select a new conext
+    _os_mode = KERNEL_MODE;
     _os_schedule();
+    _os_mode = USER_MODE;
 
-    __asm volatile ( 
-        "LDR r0, =_os_current_stack     \n\t"
-        "LDR r12, [r0]                  \n\t"
-        "LDMIA r12!, {r4-r11, LR}       \n\t"
-        "MSR PSP, r12                   \n\t"
-        "bx lr                          \n\t"
-    );   
+    _machdep_restore_context();
+
+    __asm volatile (
+     "   bx  lr                         \n"
+    );
+
 }
 
 /* Taken from
@@ -465,3 +474,4 @@ inline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store) 
 
     return atomic_SC(addr, store) ? FALSE : TRUE;
 }
+

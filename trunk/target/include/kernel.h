@@ -248,11 +248,9 @@
  *  \section copy_sec Copyright Notice
  *  This software is licensed under GPL. See the COPYING file.
  *  \verbinclude COPYING
- *
- *
  */
-#ifndef KERNEL_H
-#define KERNEL_H
+#ifndef _KERNEL_H_
+#define _KERNEL_H_
 
 #include "typedefs.h"
 #include "errno.h"
