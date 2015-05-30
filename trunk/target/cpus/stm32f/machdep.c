@@ -59,6 +59,11 @@ void ConfigurePendSV(dword);
 /* milliseconds since boot */
 static volatile uint32_t system_millis;         // simple 
 
+
+static inline void _machdep_save_context(void) __attribute__((always_inline));
+static inline void _machdep_restore_context(void) __attribute__((always_inline));
+
+
 /**
  * @brief sleep a given number of milli seconds
  * @details This is a busy waiting for a given number of muliseconds. It uses
@@ -168,10 +173,10 @@ inline void _machdep_boot(void) {
  * @brief Save context 
  * @details Save the context and set the current stack 
  */
-static inline void _machdep_save_context(void){
-    __asm volatile (
+static inline void _machdep_save_context(void) {
+    __asm (
     "   mrs r0, PSP                         \n"
-    "   stmdb r0!, {r4-r11,lr}              \n" 
+    "   stmdb r0!, {r4-r11}                 \n" 
     "   msr psp,r0                          \n"
     "   ldr r12, =_os_current_stack         \n"
     "   str r0,[r12]                        \n"
@@ -183,10 +188,10 @@ static inline void _machdep_save_context(void){
  * @details [long description]
  */
 static inline void _machdep_restore_context(void){
-    __asm volatile (
+    __asm (
     "   ldr r0, =_os_current_stack         \n"
     "   ldr r0,[r0,#0]                     \n"
-    "   ldmia r0!, {r4-r11,lr}             \n" // load context of new thread
+    "   ldmia r0!, {r4-r11}                \n" // load context of new thread
     "   msr PSP, r0                        \n"
     "   isb                                \n"
     );
@@ -395,7 +400,8 @@ void  hard_fault_handler(void) {
         :
         :"r0"
     );
-    ex = ex + 10;
+    ex = &ex[10]; 
+    // end getting the stack pointer
 
     volatile unsigned long hfsr = SCB_HFSR ;
     volatile unsigned long cfsr = SCB_CFSR ;

@@ -22,8 +22,11 @@
 cmake_minimum_required(VERSION 3.0)
 
 
-set(OPENLIBCM3  /d/lib/opencm3  )
-set(OOCD /c/arm/openocd-0.8.0/bin-x64/openocd-x64-0.8.0.exe)
+## where is libopencm3
+set(OPENLIBCM3  /c/lib/libopencm3/arm-none-eabi )
+
+## open ocd
+set(OOCD /c/tools/openocd-0.9.0/bin-x64/openocd.exe)
 set(OOCD_INTERFACE stlink-v2)
 set(OOCD_BOARD stm32f4discovery)
 
@@ -42,7 +45,7 @@ set(OOCD_ARGS "${OOCD_ARGS} -c shutdown")
 
 ##set(JPL "-Wtraditional -Wshadow -Wpointer-arith -Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wconversion")
 
-set(CMAKE_C_FLAGS "-g -ggdb -Os -mcpu=cortex-m4 -mthumb -Wall -pedantic -std=iso9899:1999 ")
+set(CMAKE_C_FLAGS "-g -ggdb -Os -mcpu=cortex-m4 -mthumb -Wall -Winline -pedantic -std=iso9899:1999 ")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} ${JPL}")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -fno-common -ffunction-sections -fdata-sections")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -mfloat-abi=hard -mfpu=fpv4-sp-d16")

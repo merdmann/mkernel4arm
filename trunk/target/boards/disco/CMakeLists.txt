@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 project(disco C)
 
-set(OPENLIBCM3  /d/lib/opencm3)
-
 set(KERNEL_INCLUDE ${PROJECT_SOURCE_DIR}/../include)
 include_directories(${KERNEL_INCLUDE} ${OPENLIBCM3}/include ./ ${CMAKE_CURRENT_BINARY_DIR})
 add_definitions( -DSTM32F4 )
