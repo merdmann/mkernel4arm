@@ -43,8 +43,9 @@ KDATA byte _os_mode = 0;				      /* will be set by the interrupt handler */
 KDATA byte _os_intr_active = 0;			  /* indicate an active interrupt handler */
 KDATA POINTER _os_current_stack; /* current stack catched by save_context */
 
-/*
- * 
+/**
+ * @brief general trap for all processe
+ * @details [long description]
  */
 void _os_process_trap(void) {
 	_machdep_trace(TRACE_PANIC_UNDERFLOW);
@@ -68,14 +69,14 @@ void _os_task_terminated(void) {
 /*
  * Claim the TCB for exclusive administration.
  */
-void _os_claim_tcb(TaskType id) {
+void _os_claim_tcb(const TaskType id) {
 	UserMode(while( !_machdep_cas_byte( (DATA POINTER)&_TCB[id].admin, NULL_TASK_ID, _os_my_task_id) ));
 }
 
 /*
  * release the tcb for other user.
  */
-void _os_release_tcb(TaskType id) {
+void _os_release_tcb(const TaskType id) {
 	UserMode(_machdep_cas_byte( (POINTER)&_TCB[id].admin, _os_my_task_id, NULL_TASK_ID ));
 }
 
@@ -86,7 +87,7 @@ void _os_release_tcb(TaskType id) {
  * @param start [description]
  * @return [description]
  */
-static byte getComputableTask(byte start) {
+static byte getComputableTask(const byte start) {
     byte i = 0;
     byte current = start;
     byte newState = PROC_FREE;
@@ -162,7 +163,7 @@ void _os_schedule() {
 /*
  * This is an internal API to create all data for a task
  */
-StatusType _os_task_create( t_task_id id, t_task_descriptor *descr) {
+StatusType _os_task_create(const t_task_id id, const t_task_descriptor *descr) {
 
 	_TCB[id].wait_addr = (DATA POINTER)0;
 	_TCB[id].stack = _machdep_initialize_stack(descr->tos, descr->entry, (TASK_ARGUMENT)0);
@@ -180,12 +181,13 @@ StatusType _os_task_create( t_task_id id, t_task_descriptor *descr) {
 /*
  * Activate a task
  */
-StatusType ActivateTask (TaskType id) {
+StatusType ActivateTask (const TaskType id) {
 	StatusType result = E_OS_LIMIT;
 
 	_os_claim_tcb(id);
+
 	if( _TCB[id].state  == PROC_SUSPENDED ) {
-		t_task_descriptor *descr = _TCB[id].descriptor;
+		const t_task_descriptor *descr = _TCB[id].descriptor;
 
 		_TCB[id].wait_addr = (DATA POINTER)0;
 		_TCB[id].event = 0;
@@ -195,7 +197,8 @@ StatusType ActivateTask (TaskType id) {
 		_TCB[id].prio =  descr->priority;
 		result = E_OK;
 	}
-	_os_release_tcb(id);
+	
+  _os_release_tcb(id);
 
 	_os_next_task = id;
 
@@ -222,7 +225,7 @@ StatusType TerminateTask (void) {
  * Chain to next task by suspending the current state are activating the
  * new kas.
  */
-StatusType ChainTask (TaskType id) {
+StatusType ChainTask (const TaskType id) {
     StatusType RC;
 
     _os_claim_tcb(id);
@@ -241,7 +244,7 @@ StatusType ChainTask (TaskType id) {
 /*
  * Return the state of the task in terms of the OSEK Statemodel.
  */
-StatusType GetTaskState ( TaskType id, TaskStateRefType state ) {
+StatusType GetTaskState ( const TaskType id, const TaskStateRefType state ) {
 	switch( _TCB[id].state ) {
 		case PROC_WAIT_EVENT | PROC_WAIT_RESOURCE:
 			*state = WAITING;
@@ -261,7 +264,7 @@ StatusType GetTaskState ( TaskType id, TaskStateRefType state ) {
 	return E_OK;
 }
 
-StatusType GetTaskID ( TaskRefType task ) {
+StatusType GetTaskID ( const TaskRefType task ) {
 	*task =_os_my_task_id;
 
 	return E_OK;

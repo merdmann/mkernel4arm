@@ -50,7 +50,7 @@ typedef EventMaskType* EventMaskRefType;
  *                 nothing.
  *  @param Mask    Mask of the events to be set.
  */
-StatusType SetEvent ( TaskType TaskID, EventMaskType Mask );
+StatusType SetEvent ( const TaskType TaskID, const EventMaskType Mask );
 
 /** This service returns the current state of all event bits of the task
  *  <TaskID>, not the events that the task is waiting for.
@@ -62,7 +62,7 @@ StatusType SetEvent ( TaskType TaskID, EventMaskType Mask );
  * @param Mask Mask of the events to be cleared.
  *
  */
-StatusType ClearEvent ( EventMaskType Mask );
+StatusType ClearEvent ( const EventMaskType Mask );
 
 /** This service returns the current state of all event bits of the task
  * TaskID, not the events that the task is waiting for.
@@ -74,7 +74,7 @@ StatusType ClearEvent ( EventMaskType Mask );
  * @param TaskID Task whose event mask is to be returned.
  * @param Event  reference to the place wehre the event will be stored.
  */
-StatusType GetEvent ( TaskType TaskID, EventMaskRefType Event );
+StatusType GetEvent ( const TaskType TaskID, const EventMaskRefType Event );
 
 /** The state of the calling task is set to waiting, unless at least one
  *  of the events specified in <Mask> has already been set.
@@ -85,6 +85,6 @@ StatusType GetEvent ( TaskType TaskID, EventMaskRefType Event );
  *
  *  @param Mask Mask of the events waited for.
  */
-StatusType WaitEvent ( EventMaskType Mask );
+StatusType WaitEvent ( const EventMaskType Mask );
 
 #endif

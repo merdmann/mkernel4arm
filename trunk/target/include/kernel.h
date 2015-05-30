@@ -275,8 +275,8 @@ void _os_restore_context(void);
 extern t_task_id  _os_my_task_id;
 extern t_task_id  _os_next_task;
 
-extern void TaskBeginHook(t_task_id id);
-extern void TaskEndHook(t_task_id id);
+extern void TaskBeginHook(const t_task_id id);
+extern void TaskEndHook(const t_task_id id);
 
 /** Panic handler
  * The pnaic handler has to be implemented for a specific hardware but
@@ -284,6 +284,6 @@ extern void TaskEndHook(t_task_id id);
  *
  * @param nbr - number of the error condtion.
  */
-extern void _os_panic(int nbr);
+extern void _os_panic(const int nbr);
 
 #endif
