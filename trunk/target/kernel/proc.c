@@ -86,7 +86,7 @@ void _os_release_tcb(TaskType id) {
  * @param start [description]
  * @return [description]
  */
-static byte getComputable(byte start) {
+static byte getComputableTask(byte start) {
     byte i = 0;
     byte current = start;
     byte newState = PROC_FREE;
@@ -153,7 +153,7 @@ void _os_schedule() {
 
     TaskEndHook(_os_my_task_id);
 
-    _os_my_task_id = getComputable( _os_my_task_id );
+    _os_my_task_id = getComputableTask( _os_my_task_id );
     _os_current_stack = _TCB[_os_my_task_id].stack;
 
     TaskBeginHook(_os_my_task_id);

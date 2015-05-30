@@ -281,7 +281,7 @@ __attribute__ ((naked)) void  pend_sv_handler() {
 
      "   .align 2                       \n"
      ".pend_sv_l1:                      \n"
-     "   .word -13                      \n"    );
+     "   .word 0xFFFFFFED               \n"    );
 }
 
 /**
