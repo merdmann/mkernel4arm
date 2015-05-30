@@ -39,15 +39,36 @@ CPU myapp {
 
 	APPMODE stm234f ;	
 	
-        ALARM ledAlarm {
-                COUNTER = System_Tick ;
-                AUTOSTART = TRUE {
-                        ALARMTIME = 50;
-                        CYCLETIME = 50;
+//        ALARM ledAlarm {
+//                COUNTER = System_Tick ;
+//                AUTOSTART = TRUE {
+//                        ALARMTIME = 50;
+//                        CYCLETIME = 50;
+//                };
+//
+//                ACTION = ACTIVATETASK { TASK = ToggelLED; };
+//
+//                AUTOSTART = TRUE {
+//                        APPMODE = stm234f;
+//                };
+//        } ;
+
+
+        EVENT Clock_Tick { MASK = 1; };
+
+        ALARM ClockAlarm {
+               COUNTER = System_Tick ;
+               AUTOSTART = TRUE {
+                        ALARMTIME = 5000;
+                        CYCLETIME = 1000;
                 };
 
-                ACTION = ACTIVATETASK { TASK = ToggelLED; };
+                ACTION = SETEVENT {
+                        TASK = ClockUpdater;
+                        EVENT = Clock_Tick;
+                };
 
+        
                 AUTOSTART = TRUE {
                         APPMODE = stm234f;
                 };
@@ -57,6 +78,13 @@ CPU myapp {
                 PRIORITY = 1;
                 STACKSIZE = 128;
                 SCHEDULE = FALSE;
+                AUTOSTART = FALSE;
+        };
+
+        TASK ClockUpdater {
+                PRIORITY = 1;
+                STACKSIZE = 128;
+                SCHEDULE = TRUE;
                 AUTOSTART = FALSE;
         };
 } ;

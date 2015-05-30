@@ -31,11 +31,28 @@
 
 #include "myapp_defs.h"
 
+DeclareEvent(Clock_Tick);
 
 TASK(ToggelLED) {
     gpio_toggle(GPIOG, GPIO14);
 }
 
+
+TASK(ClockUpdater) {
+   TaskType myTaskId;
+
+   GetTaskID( &myTaskId );
+
+    while(1) {
+    	unsigned events = 0;
+
+    	WaitEvent (Clock_Tick);
+    	
+	GetEvent ( myTaskId, &events );
+	ClearEvent( Clock_Tick );
+    }
+
+}
 
 void StartupHook() {
  

@@ -22,12 +22,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/** Process Manager
- * This is the process manager of mkernel.
- * The scheduler is called either by the tick handler which is called by
- * a low priority interrupt for by the YIELD method.
- * Additionally to the scheduler the module contains also the task API.
- *
+/**
+ * Hardware dependencies implmented for the stm32f.
  */
 #include "mkernel_config.h"
 #include "kernel.h"
@@ -55,8 +51,6 @@ extern DATA POINTER _os_current_stack;
 static AlarmBaseType System_Tick_Base = { (unsigned)0x7fffffff, 1, 100 };
 t_counter System_Tick = { 0,0, &System_Tick_Base };
 
-//extern void System_Tick_Handler(void);          // comminig frm the alarm module
-
 void msleep(uint32_t);
 void sdram_init(void);
 void ConfigurePendSV(dword);
@@ -64,7 +58,6 @@ void ConfigurePendSV(dword);
 
 /* milliseconds since boot */
 static volatile uint32_t system_millis;         // simple 
-
 
 /**
  * @brief sleep a given number of milli seconds
@@ -79,6 +72,9 @@ void msleep(uint32_t delay)
         while (wake > system_millis);
 }
 
+/**
+ * This is the exception stack as it would have been created by an exception.
+ */
 typedef struct {
     dword r0;
     dword r1;
@@ -93,6 +89,10 @@ typedef struct {
     dword fill;     // highest address on stack
 } t_exception;
 
+/**
+ * THis is the set of regísters which are not saved by the hardware but by
+ * the procedure save/restore context on the stack.
+ */
 typedef struct {
     dword r4;      // lowest address
     dword r5;
@@ -107,7 +107,6 @@ typedef struct {
                     // *** exception stack frame 
     t_exception ex;
 }  t_context;
-
 
 /**
  * @brief Create the initial stack layout for the a task
@@ -145,13 +144,64 @@ DATA POINTER _machdep_initialize_stack(DATA POINTER topOfStack, t_entry entry, T
     return (DATA POINTER)f;
 }
 
+/**
+ * @brief enter multitaksing mode
+ * @details The stm32 provides to stacks; this function set the msp to the kernel stack and 
+ *          the psp to the next process to be scheduled.
+ */
+inline void _machdep_boot(void) {    
+    __asm volatile (
+    "    ldr r0, =_os_current_stack     \n"
+    "    ldr r12,[r0,#0]                \n"
+    "    msr psp,r12                    \n"
+    "    ldr r0, =_os_kernel_stack      \n"
+    "    ldr r12,[r0,#0]                \n"
+    "    msr msp,r12                    \n"
+    "    isb                            \n"
+    "    cpsie i                        \n"  
+    "    cpsie f                        \n"
+    "    svc 0                          \n"       
+    );
+}
+
+/**
+ * @brief Save context 
+ * @details Save the context and set the current stack 
+ */
+static inline void _machdep_save_context(void){
+    __asm volatile (
+    "   mrs r0, PSP                         \n"
+    "   stmdb r0!, {r4-r11,lr}              \n" 
+    "   msr psp,r0                          \n"
+    "   ldr r12, =_os_current_stack         \n"
+    "   str r0,[r12]                        \n"
+    );
+}
+
+/**
+ * @brief Restore the context from the curent tcb
+ * @details [long description]
+ */
+static inline void _machdep_restore_context(void){
+    __asm volatile (
+    "   ldr r0, =_os_current_stack         \n"
+    "   ldr r0,[r0,#0]                     \n"
+    "   ldmia r0!, {r4-r11,lr}             \n" // load context of new thread
+    "   msr PSP, r0                        \n"
+    "   isb                                \n"
+    );
+}
+
 /*
  * The following bioth routines working toghether. Calling _machdep_yield will 
  * force a schedule and a context switch. THe contents switch will be done in
  * handler mode by the sv_call_handfler;
  */
 __attribute__ ((naked)) void _machdep_yield(void) {    
-    __asm volatile ( "svc 0 \n" );       
+    _machdep_save_context();
+    _os_schedule();
+    
+    __asm volatile ( "   svc 0           \n");  
 }
 
 /*
@@ -160,54 +210,12 @@ __attribute__ ((naked)) void _machdep_yield(void) {
  */
 __attribute__ ((naked)) void sv_call_handler(void) {
     __asm volatile (   
-      "   ldr r0, =_os_current_stack        \n"
-      "   ldr r0,[r0,#0]                    \n"
-      "   ldmia r0!, {r4-r11,lr}            \n"
-      "   msr psp, r0                       \n"
-      "   isb                               \n"
-      "   bx lr                             \n"
-    );
-}
-
-//This saves the context on the PSP, the Cortex-M3 pushes the other registers using hardwar
-static inline void _machdep_save_context(void){
-    __asm volatile (
-    "   mrs r0, PSP                         \n"
-    "   stmdb r0!, {r4-r11,lr}              \n" // save context of current thread
-    "   msr psp,r0                          \n"
-    "   ldr r12, =_os_current_stack         \n"
-    "   str r0,[r12]                        \n"
-    );
-}
-
-static inline void _machdep_restore_context(){
-    __asm volatile (
-      "   ldr r0, =_os_current_stack        \n"
-      "   ldr r0,[r0,#0]                    \n"
-
-     //"   mov lr, r4                         \n"
-     "   ldmia r0!, {r4-r11,lr}             \n" // load context of new thread
-     "   msr PSP, r0                        \n"
-     );
-}
-
-
- /**
-  * @brief enter multitaksing mode
-  * @details The stm32 provides to stacks; this function set the msp to the kernel stack and 
-  *          the psp to the next process to be scheduled.
-  */
-inline void _machdep_boot(void) {    
-   __asm volatile (
-        "    ldr r0, =_os_current_stack     \n"
-        "    ldr r12,[r0,#0]                \n"
-        "    msr psp,r12                    \n"
-        "    ldr r0, =_os_kernel_stack      \n"
-        "    ldr r12,[r0,#0]                \n"
-        "    msr msp,r12                    \n"
-        "    isb                            \n"
-        "    cpsie i                        \n"  
-        "    cpsie f                        \n"
+    "   ldr r0, =_os_current_stack        \n"
+    "   ldr r0,[r0,#0]                    \n"
+    "   ldmia r0!, {r4-r11,lr}            \n"
+    "   msr psp, r0                       \n"
+    "   isb                               \n"
+    "   bx lr                             \n"
     );
 }
 
@@ -253,6 +261,30 @@ void sys_tick_handler(void) {
 }
 
 /**
+ * @brief perform a context switch
+ * @details [long description]
+ * 
+ * @return none
+ */
+__attribute__ ((naked)) void  pend_sv_handler() {
+    _machdep_save_context();
+    // select a new conext
+    _os_mode = KERNEL_MODE;
+    _os_schedule();
+    _os_mode = USER_MODE;
+
+    _machdep_restore_context();
+
+    __asm volatile (
+     "   ldr r0, .pend_sv_l1            \n"
+     "   bx  r0                         \n"
+
+     "   .align 2                       \n"
+     ".pend_sv_l1:                      \n"
+     "   .word -13                      \n"    );
+}
+
+/**
  * @brief Create a banner
  * @details This procedure create a banner
  */
@@ -270,13 +302,18 @@ void _machdep_banner() {
     lcd_show_frame();
 }
 
-/*
- * Manage crical section.
+/**
+ * @brief begin a critical section
+ * @details [long description]
  */
 void _machdep_critical_begin(void) {
     __disable_irq();
-} 
+}
 
+/**
+ * @brief critical section end
+ * @details [long description]
+ */
 void _machdep_critical_end(void) {
     __enable_irq();
 }
@@ -289,13 +326,20 @@ void _machdep_initialize_wdt(void) {
 #endif
 }
 
+/**
+ * @brief clear the wdt timer
+ * @details [long description]
+ */
 void _machdep_clear_wdt(void) {
 #if USE_WATCHDOG == 1 
 #endif
 }
 
-/*
- * Output some trace information on the two led's of the discovery board.
+/**
+ * @brief Output trace information
+ * @details [long description]
+ * 
+ * @param code [description]
  */
 void _machdep_trace(unsigned code ) {
     switch(code) {
@@ -313,8 +357,7 @@ void _machdep_trace(unsigned code ) {
  *
  * Very simple routine for printing out hex constants.
  */
-static void print_hex(unsigned long v)
-{
+static void print_hex(unsigned long v) {
     int ndx = 0;
     char buf[20];
  
@@ -346,13 +389,13 @@ void  hard_fault_handler(void) {
 
     // here we are calculating the stack pointer. If you add any local defintions
     // this might change
-    __asm__ __volatile__(
-        "mrs %0, msp        \n\t"
+    __asm__ __volatile__ (
+        "mrs %0, msp         \n\t"
         :"=r"(ex)
         :
         :"r0"
     );
-    ex = ex + 11;
+    ex = ex + 10;
 
     volatile unsigned long hfsr = SCB_HFSR ;
     volatile unsigned long cfsr = SCB_CFSR ;
@@ -407,34 +450,11 @@ void  hard_fault_handler(void) {
     while(1);
 }
 
-
 /**
  * @brief [brief description]
  * @details [long description]
  */
 void  nmi_handler() {
-}
-
-/**
- * @brief [brief description]
- * @details [long description]
- * 
- * @param d [description]
- * @return [description]
- */
-__attribute__ ((naked)) void  pend_sv_handler() {
-    _machdep_save_context();
-    // select a new conext
-    _os_mode = KERNEL_MODE;
-    _os_schedule();
-    _os_mode = USER_MODE;
-
-    _machdep_restore_context();
-
-    __asm volatile (
-     "   bx  lr                         \n"
-    );
-
 }
 
 /* Taken from
