@@ -179,7 +179,7 @@ typedef struct {
 	DATA POINTER    wait_addr; 	/**< the address of the tasks lock resource */
 	dword	        activations;    /**< activation requested */
 
-	t_task_descriptor *descriptor;/**< points to task descriptor */
+	const t_task_descriptor *descriptor;/**< points to task descriptor */
 } t_tcb;
 
 
@@ -208,7 +208,7 @@ extern void _os_schedule( void );
  * This method is used by the system generator to create a task
  * instance.
  */
-StatusType _os_task_create( t_task_id id, t_task_descriptor *descr );
+StatusType _os_task_create( const t_task_id id, const t_task_descriptor *descr );
 
 /** claim the tcb for administration purpose
  *  @param pointer to the control block
@@ -226,7 +226,7 @@ StatusType _os_task_create( t_task_id id, t_task_descriptor *descr );
  *  If called from an interrupt handler the method does nothing.
  *
  */
-void _os_claim_tcb(t_task_id id);
+void _os_claim_tcb(const t_task_id id);
 
 /** release a tcb which has been claimed with _os_claim_tcb.
  *  @param pointer to the control block.
@@ -238,7 +238,7 @@ void _os_claim_tcb(t_task_id id);
  *  If called from an interrupt handler is does nothing.
  *
  */
-void _os_release_tcb( t_task_id id);
+void _os_release_tcb(const t_task_id id);
 
 /**
  * @brief Trap in case the process terminates unexpected
@@ -270,7 +270,6 @@ extern byte _os_mode;
 
 void _os_underflow_trap(void);
 void _os_task_terminated(void);
-
 void _os_initialize_scheduler(void) ;
 
 #endif

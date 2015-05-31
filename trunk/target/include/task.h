@@ -64,7 +64,7 @@ StatusType TerminateTask ( void );
  * starts to run at the earliest after the calling task has been
  * terminated.
  */
-StatusType ChainTask ( TaskType id );
+StatusType ChainTask ( const TaskType id );
 
 /** If a higher-priority task is ready, the internal resource of the task
  * is released, the current task is put into the ready state, its
@@ -76,12 +76,12 @@ StatusType ChainTask ( TaskType id );
 /** GetTaskID returns the information about the TaskID of the task
  * which is currently running.
  */
-StatusType GetTaskID ( TaskRefType task );
+StatusType GetTaskID ( const TaskRefType task );
 
 /** Returns the state of a task (running, ready, waiting, suspended)
  * at the time of calling GetTaskState.
  */
-StatusType GetTaskState( TaskType id, TaskStateRefType state );
+StatusType GetTaskState( const TaskType id, const TaskStateRefType state );
 
 /** OSEK/VDX Naming convention for tasks */
 #define TASK(x) void x(TASK_ARGUMENT arg __attribute__((unused)))

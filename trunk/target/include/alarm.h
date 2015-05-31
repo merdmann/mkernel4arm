@@ -79,7 +79,11 @@ extern t_alarm_handler _oil_alarm_handlers[];
  * @param Info         Reference to structure with constants of the alarm base.
  *
  */
+<<<<<<< .merge_file_a05052
 StatusType GetAlarmBase ( AlarmType AlarmId, AlarmBaseRefType info );
+=======
+StatusType GetAlarmBase ( const AlarmType AlarmId, const AlarmBaseRefType info );
+>>>>>>> .merge_file_a00592
 
 /**
  * The system service GetAlarm returns the relative value in ticks
@@ -89,7 +93,11 @@ StatusType GetAlarmBase ( AlarmType AlarmId, AlarmBaseRefType info );
  * @param Info         Relative value in ticks before the alarm <AlarmID> expires.
  *
  */
+<<<<<<< .merge_file_a05052
 StatusType GetAlarm ( AlarmType AlarmID, TickRefType Info);
+=======
+StatusType GetAlarm ( const AlarmType AlarmID, const TickRefType Info);
+>>>>>>> .merge_file_a00592
 
 /**
  * The system service occupies the alarm <AlarmID> element.
@@ -115,7 +123,11 @@ StatusType GetAlarm ( AlarmType AlarmID, TickRefType Info);
  * @param cycle     Cycle value in case of cyclic alarm. In case of single alarms, cycle shall be zero.
  *
  */
+<<<<<<< .merge_file_a05052
 StatusType SetRelAlarm ( AlarmType AlarmID, TickType increment, TickType cycle );
+=======
+StatusType SetRelAlarm ( const AlarmType AlarmID, const TickType increment, const TickType cycle );
+>>>>>>> .merge_file_a00592
 
 /**
  * The system service occupies the alarm <AlarmID> element.
@@ -144,14 +156,22 @@ StatusType SetRelAlarm ( AlarmType AlarmID, TickType increment, TickType cycle )
  * @param cycle   Cycle value in case of cyclic alarm. In case of single alarms, cycle shall be zero.
  *
  */
+<<<<<<< .merge_file_a05052
 StatusType SetAbsAlarm ( AlarmType AlarmID, TickType start, TickType cycle );
+=======
+StatusType SetAbsAlarm ( const AlarmType AlarmID, const TickType start, const TickType cycle );
+>>>>>>> .merge_file_a00592
 
 /**
  * The system service cancels the alarm <AlarmID>.
  *
  * @param AlarmID Reference to an alarm
  */
+<<<<<<< .merge_file_a05052
 StatusType CancelAlarm ( AlarmType AlarmID );
+=======
+StatusType CancelAlarm ( const AlarmType AlarmID );
+>>>>>>> .merge_file_a00592
 
 void _os_initialize_alarm(void);
 void _os_alarm_scheduler(void);

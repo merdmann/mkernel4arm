@@ -43,8 +43,9 @@ KDATA byte _os_mode = 0;				      /* will be set by the interrupt handler */
 KDATA byte _os_intr_active = 0;			  /* indicate an active interrupt handler */
 KDATA POINTER _os_current_stack; /* current stack catched by save_context */
 
-/*
- * 
+/**
+ * @brief general trap for all processe
+ * @details [long description]
  */
 void _os_process_trap(void) {
 	_machdep_trace(TRACE_PANIC_UNDERFLOW);
@@ -68,15 +69,67 @@ void _os_task_terminated(void) {
 /*
  * Claim the TCB for exclusive administration.
  */
-void _os_claim_tcb(TaskType id) {
+void _os_claim_tcb(const TaskType id) {
 	UserMode(while( !_machdep_cas_byte( (DATA POINTER)&_TCB[id].admin, NULL_TASK_ID, _os_my_task_id) ));
 }
 
 /*
  * release the tcb for other user.
  */
-void _os_release_tcb(TaskType id) {
+void _os_release_tcb(const TaskType id) {
 	UserMode(_machdep_cas_byte( (POINTER)&_TCB[id].admin, _os_my_task_id, NULL_TASK_ID ));
+}
+
+/**
+ * @brief [brief description]
+ * @details [long description]
+ * 
+ * @param start [description]
+ * @return [description]
+ */
+static byte getComputableTask(const byte start) {
+    byte i = 0;
+    byte current = start;
+    byte newState = PROC_FREE;
+
+    // find the next conputable task
+    for( i=0; i < _oil_max_tcb && newState == PROC_FREE; ++i) {
+        current = (start + i) % _oil_max_tcb;
+
+        /* tasks with this flags set are manipulated by a task */
+        if( _TCB[current].admin != NULL_TASK_ID || _TCB[current].state == PROC_SUSPENDED )
+            continue;
+
+        switch(_TCB[current].state) {
+            case PROC_WAIT_RESOURCE : {
+                    /* OSEK/VDX: we are waiting for an resource to become free */
+                    ResourceType p = (ResourceType)(_TCB[current].wait_addr);
+
+                    if( p->owner == NO_OWNER ) {
+                       p->owner = current;
+                       newState = PROC_COMPUTING;
+                    }
+                }
+                break;
+
+            case PROC_WAIT_EVENT:
+                /* OSEK/VDX: process wait for an set event flag, check for events */
+                if( _TCB[current].event & _TCB[current].mask )
+                    newState = PROC_COMPUTING;
+                break;
+
+             case PROC_COMPUTING:
+                newState = PROC_COMPUTING;
+                break;
+        } 
+    }
+
+    if( newState == PROC_FREE ) 
+        return _os_my_task_id;
+    else  {
+        _TCB[current].state = newState;
+        return current;
+    }
 }
 
 /*
@@ -92,79 +145,17 @@ void _os_release_tcb(TaskType id) {
  *  user process.
  */
 void _os_schedule() {
-    byte start = 0;
-    t_task_id last_task_id;
-
     /* if non preemptable tasks is running or an admin task is pedning no recscheduling */
     if( (_TCB[_os_my_task_id].descriptor->schedule == NON && _TCB[_os_my_task_id].state == PROC_COMPUTING) 
         || _TCB[_os_my_task_id].admin != NULL_TASK_ID )
         return;
 
-    /* save the context by storing the current stack */
-    last_task_id = _os_my_task_id;
-    _TCB[last_task_id].stack = _os_current_stack;
-
-
-    /* define the startpoint for the scan */
-    if( _os_next_task != NULL_TASK_ID ) {
-      start = _os_next_task;
-      _os_next_task = NULL_TASK_ID;
-    }
-    else
-   	  start = 0;
+    _TCB[_os_my_task_id].stack = _os_current_stack;
 
     TaskEndHook(_os_my_task_id);
 
-    /*
-     * Scan all tasks and select an applicable task. TCB's are sorted according to
-     * priority of the task.
-     */
-    {
-       byte i = 0;
-       byte current = start;
-       byte state = PROC_FREE;
-
-       while ( i < _oil_max_tcb ) {
-    	     current = (start + i++) % _oil_max_tcb;
-           state = _TCB[current].state;
-
-           /* tasks with this flags set are manipulated by a task */
-           if( _TCB[current].admin != NULL_TASK_ID || state == PROC_SUSPENDED )
-        	     continue;
-
-           if( state == PROC_WAIT_RESOURCE ) {
-        	     /* OSEK/VDX: we are waiting for an resource to become free */
-               ResourceType p = (ResourceType)(_TCB[current].wait_addr);
-
-               if( p->owner == NO_OWNER ) {
-                   p->owner = current;
-         		       state = PROC_COMPUTING;
-               	   break;
-               }
-           }
-           else if( state == PROC_WAIT_EVENT ) {
-               /* OSEK/VDX: process wait for an set event flag, check for events */
-               if( _TCB[current].event & _TCB[current].mask ) {
-                   state = PROC_COMPUTING;
-                   break;
-               }
-           }
-           else if( state == PROC_COMPUTING ) {
-               break;
-           }
-       }
-       if( state == PROC_COMPUTING ) {
-    	     /*
-    	      * if the current task id has not changed we can assume that nobody else
-    	      * has executed schedule while we have searched for an executable task
-     	      */
-     	     if( _os_my_task_id == last_task_id ) {
-    		       _TCB[current].state = state;
-    		       _os_my_task_id = current;
-       		     _os_current_stack = _TCB[current].stack;
-    	     }
-       }
-    }
+    _os_my_task_id = getComputableTask( _os_my_task_id );
+    _os_current_stack = _TCB[_os_my_task_id].stack;
 
     TaskBeginHook(_os_my_task_id);
 }
@@ -172,7 +163,7 @@ void _os_schedule() {
 /*
  * This is an internal API to create all data for a task
  */
-StatusType _os_task_create( t_task_id id, t_task_descriptor *descr) {
+StatusType _os_task_create(const t_task_id id, const t_task_descriptor *descr) {
 
 	_TCB[id].wait_addr = (DATA POINTER)0;
 	_TCB[id].stack = _machdep_initialize_stack(descr->tos, descr->entry, (TASK_ARGUMENT)0);
@@ -190,12 +181,13 @@ StatusType _os_task_create( t_task_id id, t_task_descriptor *descr) {
 /*
  * Activate a task
  */
-StatusType ActivateTask (TaskType id) {
+StatusType ActivateTask (const TaskType id) {
 	StatusType result = E_OS_LIMIT;
 
 	_os_claim_tcb(id);
+
 	if( _TCB[id].state  == PROC_SUSPENDED ) {
-		t_task_descriptor *descr = _TCB[id].descriptor;
+		const t_task_descriptor *descr = _TCB[id].descriptor;
 
 		_TCB[id].wait_addr = (DATA POINTER)0;
 		_TCB[id].event = 0;
@@ -205,7 +197,8 @@ StatusType ActivateTask (TaskType id) {
 		_TCB[id].prio =  descr->priority;
 		result = E_OK;
 	}
-	_os_release_tcb(id);
+	
+  _os_release_tcb(id);
 
 	_os_next_task = id;
 
@@ -232,7 +225,7 @@ StatusType TerminateTask (void) {
  * Chain to next task by suspending the current state are activating the
  * new kas.
  */
-StatusType ChainTask (TaskType id) {
+StatusType ChainTask (const TaskType id) {
     StatusType RC;
 
     _os_claim_tcb(id);
@@ -251,7 +244,7 @@ StatusType ChainTask (TaskType id) {
 /*
  * Return the state of the task in terms of the OSEK Statemodel.
  */
-StatusType GetTaskState ( TaskType id, TaskStateRefType state ) {
+StatusType GetTaskState ( const TaskType id, const TaskStateRefType state ) {
 	switch( _TCB[id].state ) {
 		case PROC_WAIT_EVENT | PROC_WAIT_RESOURCE:
 			*state = WAITING;
@@ -271,7 +264,7 @@ StatusType GetTaskState ( TaskType id, TaskStateRefType state ) {
 	return E_OK;
 }
 
-StatusType GetTaskID ( TaskRefType task ) {
+StatusType GetTaskID ( const TaskRefType task ) {
 	*task =_os_my_task_id;
 
 	return E_OK;
