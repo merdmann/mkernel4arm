@@ -62,7 +62,7 @@ void _machdep_clear_wdt(void);
 
 void _machdep_trace(unsigned);
 
-BOOL _machdep_cas_byte(volatile void*, dword, dword);
+BOOL _machdep_cas_byte(volatile void*, uint32_t, uint32_t);
 
 
 #endif

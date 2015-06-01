@@ -177,7 +177,7 @@ typedef struct {
 	unsigned  	event;    	/**< event word */
 	unsigned	mask;	  	/**< the events we are waiting for */
 	DATA POINTER    wait_addr; 	/**< the address of the tasks lock resource */
-	dword	        activations;    /**< activation requested */
+	uint32_t	activations;    /**< activation requested */
 
 	const t_task_descriptor *descriptor;/**< points to task descriptor */
 } t_tcb;
@@ -261,7 +261,7 @@ extern byte _os_mode;
 #define USER_MODE 		0				/* Call from application */
 #define KERNEL_MODE 	255				/* call from kernel */
 
-#define UserMode(X) if(_os_mode == USER_MODE) X
+#define UserMode(X) if(_os_mode == USER_MODE) { X ; }
 #define IsUserMode(x) (_os_mode == USER_MODE)
 
 /**

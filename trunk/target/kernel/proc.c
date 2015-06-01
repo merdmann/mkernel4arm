@@ -48,36 +48,35 @@ KDATA POINTER _os_current_stack; /* current stack catched by save_context */
  * @details [long description]
  */
 void _os_process_trap(void) {
-	_machdep_trace(TRACE_PANIC_UNDERFLOW);
+    _machdep_trace(TRACE_PANIC_UNDERFLOW);
 }
 
 /*
  * This procedure will only be called if a task terminates.
  */
 void _os_task_terminated(void) {
+    _os_claim_tcb(_os_my_task_id);
+    _TCB[_os_my_task_id].state = PROC_SUSPENDED;
+    _os_release_tcb(_os_my_task_id);
 
-	_os_claim_tcb(_os_my_task_id);
-	_TCB[_os_my_task_id].state = PROC_SUSPENDED;
-	_os_release_tcb(_os_my_task_id);
+    _os_schedule();
 
-  _os_schedule();
-  
-	_machdep_yield();
-	/* should never return to this point */
+    _machdep_yield();
+    /* should never return to this point */
 }
 
 /*
  * Claim the TCB for exclusive administration.
  */
 void _os_claim_tcb(const TaskType id) {
-	UserMode(while( !_machdep_cas_byte( (DATA POINTER)&_TCB[id].admin, NULL_TASK_ID, _os_my_task_id) ));
+    UserMode(while( !_machdep_cas_byte( (DATA POINTER)&_TCB[id].admin, NULL_TASK_ID, _os_my_task_id) ));
 }
 
 /*
  * release the tcb for other user.
  */
 void _os_release_tcb(const TaskType id) {
-	UserMode(_machdep_cas_byte( (POINTER)&_TCB[id].admin, _os_my_task_id, NULL_TASK_ID ));
+    UserMode(_machdep_cas_byte( (POINTER)&_TCB[id].admin, _os_my_task_id, NULL_TASK_ID ));
 }
 
 /**
@@ -96,13 +95,9 @@ static byte getComputableTask(const byte start) {
     for( i=0; i < _oil_max_tcb && newState == PROC_FREE; ++i) {
         current = (start + i) % _oil_max_tcb;
 
-        /* tasks with this flags set are manipulated by a task */
-        if( _TCB[current].admin != NULL_TASK_ID || _TCB[current].state == PROC_SUSPENDED )
-            continue;
-
         switch(_TCB[current].state) {
-            case PROC_WAIT_RESOURCE : {
-                    /* OSEK/VDX: we are waiting for an resource to become free */
+      	    /* OSEK/VDX: we are waiting for an resource to become free */
+            case PROC_WAIT_RESOURCE: {
                     ResourceType p = (ResourceType)(_TCB[current].wait_addr);
 
                     if( p->owner == NO_OWNER ) {
@@ -112,24 +107,33 @@ static byte getComputableTask(const byte start) {
                 }
                 break;
 
+   	    /* OSEK/VDX: process wait for an set event flag, check for events */
             case PROC_WAIT_EVENT:
-                /* OSEK/VDX: process wait for an set event flag, check for events */
                 if( _TCB[current].event & _TCB[current].mask )
                     newState = PROC_COMPUTING;
                 break;
 
+             /* this thread is in computable state */
              case PROC_COMPUTING:
                 newState = PROC_COMPUTING;
                 break;
+
+             /* skip any supended task */
+             case PROC_SUSPENDED:
+             	break;
+
+             /* any thing else has no meaning and will be ignored */
+             default:
+             	break;
         } 
     }
 
     if( newState == PROC_FREE ) 
-        return _os_my_task_id;
-    else  {
-        _TCB[current].state = newState;
-        return current;
-    }
+        current = start;
+
+    _TCB[current].state = newState;
+
+    return current;
 }
 
 /*
@@ -151,12 +155,17 @@ void _os_schedule() {
         return;
 
     _TCB[_os_my_task_id].stack = _os_current_stack;
-
     TaskEndHook(_os_my_task_id);
 
+    // take hints into account
+    if( _os_next_task != NULL_TASK_ID ) {
+    	_os_my_task_id = _os_next_task;
+    	_os_next_task = NULL_TASK_ID;
+    }
+   
     _os_my_task_id = getComputableTask( _os_my_task_id );
-    _os_current_stack = _TCB[_os_my_task_id].stack;
 
+    _os_current_stack = _TCB[_os_my_task_id].stack;
     TaskBeginHook(_os_my_task_id);
 }
 
@@ -182,43 +191,40 @@ StatusType _os_task_create(const t_task_id id, const t_task_descriptor *descr) {
  * Activate a task
  */
 StatusType ActivateTask (const TaskType id) {
-	StatusType result = E_OS_LIMIT;
+    StatusType result = E_OS_LIMIT;
 
-	_os_claim_tcb(id);
+    _os_claim_tcb(id);
+    if( _TCB[id].state  == PROC_SUSPENDED ) {
+	const t_task_descriptor *descr = _TCB[id].descriptor;
 
-	if( _TCB[id].state  == PROC_SUSPENDED ) {
-		const t_task_descriptor *descr = _TCB[id].descriptor;
+	_TCB[id].wait_addr = (DATA POINTER)0;
+	_TCB[id].event = 0;
+	_TCB[id].mask = 0;
+	_TCB[id].stack = _machdep_initialize_stack(descr->tos, descr->entry, (TASK_ARGUMENT)0);
+	_TCB[id].state = PROC_COMPUTING;
+	_TCB[id].prio =  descr->priority;
+	result = E_OK;
+     }
+     _os_release_tcb(id);
 
-		_TCB[id].wait_addr = (DATA POINTER)0;
-		_TCB[id].event = 0;
-		_TCB[id].mask = 0;
-		_TCB[id].stack = _machdep_initialize_stack(descr->tos, descr->entry, (TASK_ARGUMENT)0);
-		_TCB[id].state = PROC_COMPUTING;
-		_TCB[id].prio =  descr->priority;
-		result = E_OK;
-	}
-	
-  _os_release_tcb(id);
+     _os_next_task = id;
 
-	_os_next_task = id;
-
-	if( _os_mode == USER_MODE)
-	    _machdep_yield();
-
-	return result;
+     UserMode(_machdep_yield());
+     
+     return result;
 }
 
 /*
  * Terminate the current task gracefully
  */
 StatusType TerminateTask (void) {
-  _os_claim_tcb( _os_my_task_id );
-	_TCB[_os_my_task_id].state = PROC_SUSPENDED;
-	_os_release_tcb ( _os_my_task_id );
+    _os_claim_tcb( _os_my_task_id );
+    _TCB[_os_my_task_id].state = PROC_SUSPENDED;
+    _os_release_tcb ( _os_my_task_id );
 
-	UserMode(_machdep_yield());
+    UserMode(_machdep_yield());
 
-	return E_OK;
+    return E_OK;
 }
 
 /*
