@@ -45,7 +45,7 @@
 
 extern DATA POINTER _os_current_stack;
 
-#define ref(x)  ((dword*)(x))
+#define ref(x)  ((uint32_t*)(x))
 
 /* this counter instance is used for the system clock */
 static AlarmBaseType System_Tick_Base = { (unsigned)0x7fffffff, 1, 100 };
@@ -53,11 +53,16 @@ t_counter System_Tick = { 0,0, &System_Tick_Base };
 
 void msleep(uint32_t);
 void sdram_init(void);
-void ConfigurePendSV(dword);
+void ConfigurePendSV(uint32_t);
 
 
 /* milliseconds since boot */
 static volatile uint32_t system_millis;         // simple 
+
+
+static inline void _machdep_save_context(void) __attribute__((always_inline));
+static inline void _machdep_restore_context(void) __attribute__((always_inline));
+
 
 /**
  * @brief sleep a given number of milli seconds
@@ -76,17 +81,17 @@ void msleep(uint32_t delay)
  * This is the exception stack as it would have been created by an exception.
  */
 typedef struct {
-    dword r0;
-    dword r1;
-    dword r2;
-    dword r3;
-    dword r12;
+    uint32_t r0;
+    uint32_t r1;
+    uint32_t r2;
+    uint32_t r3;
+    uint32_t r12;
     void  *lr;
     void  *pc;
-    dword psr;
-    dword s[16];
-    dword fpscr;
-    dword fill;     // highest address on stack
+    uint32_t psr;
+    uint32_t s[16];
+    uint32_t fpscr;
+    uint32_t fill;     // highest address on stack
 } t_exception;
 
 /**
@@ -94,16 +99,16 @@ typedef struct {
  * the procedure save/restore context on the stack.
  */
 typedef struct {
-    dword r4;      // lowest address
-    dword r5;
-    dword r6;
-    dword r7;
-    dword r8;
-    dword r9;
-    dword r10;
-    dword r11;
+    uint32_t r4;      // lowest address
+    uint32_t r5;
+    uint32_t r6;
+    uint32_t r7;
+    uint32_t r8;
+    uint32_t r9;
+    uint32_t r10;
+    uint32_t r11;
 
-    dword ret;
+    uint32_t ret;
                     // *** exception stack frame 
     t_exception ex;
 }  t_context;
@@ -168,10 +173,10 @@ inline void _machdep_boot(void) {
  * @brief Save context 
  * @details Save the context and set the current stack 
  */
-static inline void _machdep_save_context(void){
-    __asm volatile (
+static inline void _machdep_save_context(void) {
+    __asm (
     "   mrs r0, PSP                         \n"
-    "   stmdb r0!, {r4-r11,lr}              \n" 
+    "   stmdb r0!, {r4-r11}                 \n" 
     "   msr psp,r0                          \n"
     "   ldr r12, =_os_current_stack         \n"
     "   str r0,[r12]                        \n"
@@ -183,10 +188,10 @@ static inline void _machdep_save_context(void){
  * @details [long description]
  */
 static inline void _machdep_restore_context(void){
-    __asm volatile (
+    __asm (
     "   ldr r0, =_os_current_stack         \n"
     "   ldr r0,[r0,#0]                     \n"
-    "   ldmia r0!, {r4-r11,lr}             \n" // load context of new thread
+    "   ldmia r0!, {r4-r11}                \n" // load context of new thread
     "   msr PSP, r0                        \n"
     "   isb                                \n"
     );
@@ -385,7 +390,7 @@ static int col = 5;
  * @details [long description]
  */
 void  hard_fault_handler(void) {
-    dword *ex = (dword*)0;
+    uint32_t *ex = (uint32_t*)0;
 
     // here we are calculating the stack pointer. If you add any local defintions
     // this might change
@@ -395,14 +400,15 @@ void  hard_fault_handler(void) {
         :
         :"r0"
     );
-    ex = ex + 10;
+    ex = &ex[10]; 
+    // end getting the stack pointer
 
     volatile unsigned long hfsr = SCB_HFSR ;
     volatile unsigned long cfsr = SCB_CFSR ;
 
-    volatile dword psr = (dword)((t_exception*)ex)->psr;
-    volatile dword pc  = (dword)((t_exception*)ex)->pc;   
-    volatile dword lr  = (dword)((t_exception*)ex)->lr;
+    volatile uint32_t psr = (uint32_t)((t_exception*)ex)->psr;
+    volatile uint32_t pc  = (uint32_t)((t_exception*)ex)->pc;   
+    volatile uint32_t lr  = (uint32_t)((t_exception*)ex)->lr;
 
     gfx_fillScreen(LCD_GREY);
     gfx_setTextSize(1); nl;
@@ -438,12 +444,13 @@ void  hard_fault_handler(void) {
                 } 
             }
             nl;
-        }
+       }
     }
 
     gfx_puts("psr :"); print_hex(psr); nl;
     gfx_puts("pc  :"); print_hex(pc); nl;
     gfx_puts("lr  :"); print_hex(lr); nl;
+    gfx_puts("sp  :"); print_hex( (uint32_t) &ex[-10]); nl;
     gfx_puts("ccr :"); print_hex(SCB_CCR); nl;
     lcd_show_frame();
 
@@ -461,18 +468,18 @@ void  nmi_handler() {
  * http://stackoverflow.com/questions/5745880/simulating-ldrex-strex-load-store-exclusive-in-cortex-m0
 */
 
-#define unlikely(x) __builtin_expect((dword)(x),0)
+#define unlikely(x) __builtin_expect((uint32_t)(x),0)
 
-static inline dword atomic_LL(volatile void *addr) {
-    dword dest;
+static inline uint32_t atomic_LL(volatile void *addr) {
+    uint32_t dest;
 
     __asm__ __volatile__("ldrex %0, [%1]" : "=r" (dest) : "r" (addr));
     
     return dest;
 }
 
-static inline dword atomic_SC(volatile void *addr, dword value) {
-    dword dest;
+static inline uint32_t atomic_SC(volatile void *addr, uint32_t value) {
+    uint32_t dest;
 
     __asm__ __volatile__("strex %0, %2, [%1]" :
           "=&r" (dest) : "r" (addr), "r" (value) : "memory");
@@ -487,7 +494,7 @@ static inline dword atomic_SC(volatile void *addr, dword value) {
  * @param store Value to be stored, if (*addr == expected).
  * @return 0  ok, 1 failure.
  */
-inline BOOL _machdep_cas_byte(volatile void *addr, dword expected, dword store) {
+inline BOOL _machdep_cas_byte(volatile void *addr, uint32_t expected, uint32_t store) {
     
     if (unlikely(atomic_LL(addr) != expected))
         return FALSE;

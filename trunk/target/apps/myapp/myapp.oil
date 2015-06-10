@@ -39,19 +39,19 @@ CPU myapp {
 
 	APPMODE stm234f ;	
 	
-//        ALARM ledAlarm {
-//                COUNTER = System_Tick ;
-//                AUTOSTART = TRUE {
-//                        ALARMTIME = 50;
-//                        CYCLETIME = 50;
-//                };
-//
-//                ACTION = ACTIVATETASK { TASK = ToggelLED; };
-//
-//                AUTOSTART = TRUE {
-//                        APPMODE = stm234f;
-//                };
-//        } ;
+        ALARM ledAlarm {
+                COUNTER = System_Tick ;
+                AUTOSTART = TRUE {
+                        ALARMTIME = 50;
+                        CYCLETIME = 50;
+                };
+
+                ACTION = ACTIVATETASK { TASK = ToggelLED; };
+
+                AUTOSTART = TRUE {
+                        APPMODE = stm234f;
+                };
+        } ;
 
 
         EVENT Clock_Tick { MASK = 1; };

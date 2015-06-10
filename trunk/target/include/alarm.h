@@ -151,6 +151,7 @@ StatusType SetAbsAlarm ( const AlarmType AlarmID, const TickType start, const Ti
  *
  * @param AlarmID Reference to an alarm
  */
+
 StatusType CancelAlarm ( const AlarmType AlarmID );
 
 void _os_initialize_alarm(void);
