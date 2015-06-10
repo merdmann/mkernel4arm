@@ -1,7 +1,6 @@
-build/
-build-*/
+build/*
 *.asm
 *.lst
 *.o
 *.d
-
+*.elf
