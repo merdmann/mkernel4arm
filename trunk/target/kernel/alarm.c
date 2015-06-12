@@ -52,7 +52,6 @@
 #include "machdep.h"
 
 void _os_initialize_alarm() {
-	_machdep_initialize_timer();
 }
 
 
@@ -65,7 +64,7 @@ void _os_alarm_scheduler() {
 
 
 
-StatusType GetAlarmBase ( AlarmType AlarmId, AlarmBaseRefType info ) {
+StatusType GetAlarmBase ( const AlarmType AlarmId, const AlarmBaseRefType info ) {
 	info->maxallowedvalue = AlarmId->counter->base->maxallowedvalue;
 	info->mincycle = AlarmId->counter->base->mincycle;
 	info->ticksperbase = AlarmId->counter->base->ticksperbase;
@@ -73,14 +72,14 @@ StatusType GetAlarmBase ( AlarmType AlarmId, AlarmBaseRefType info ) {
 	return E_OK;
 }
 
-StatusType GetAlarm ( AlarmType AlarmID, TickRefType info) {
+StatusType GetAlarm ( const AlarmType AlarmID, const TickRefType info) {
     *info = AlarmID->expire - AlarmID->counter->value;
 	return E_OK;
 }
 
-StatusType SetRelAlarm ( AlarmType AlarmID, TickType increment, TickType cycle ) {
+StatusType SetRelAlarm ( const AlarmType AlarmID, const TickType increment, const TickType cycle ) {
 	if( AlarmID->active )
-		return E_OS_STATE;
+	    return E_OS_STATE;
 
 	AlarmID->cycle = cycle;
 	_machdep_critical_end();
@@ -91,9 +90,9 @@ StatusType SetRelAlarm ( AlarmType AlarmID, TickType increment, TickType cycle )
 	return E_OK;
 }
 
-StatusType SetAbsAlarm ( AlarmType AlarmID, TickType start, TickType cycle ) {
+StatusType SetAbsAlarm ( const AlarmType AlarmID, const TickType start, const TickType cycle ) {
 	if( AlarmID->active )
-		return E_OS_STATE;
+	    return E_OS_STATE;
 
 	AlarmID->expire = start;
 	AlarmID->cycle = cycle;
@@ -102,7 +101,7 @@ StatusType SetAbsAlarm ( AlarmType AlarmID, TickType start, TickType cycle ) {
 	return E_OK;
 }
 
-StatusType CancelAlarm ( AlarmType AlarmID ) {
+StatusType CancelAlarm ( const AlarmType AlarmID ) {
 	AlarmID->active = FALSE;
 
 	AlarmID->expire = 0;

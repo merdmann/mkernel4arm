@@ -30,31 +30,36 @@
 #include <libopencm3/stm32/gpio.h>
 
 #include "myapp_defs.h"
-#include "../../boards/disco/gfx.h"
-#include "../../boards/disco/lcd-spi.h"
 
+DeclareEvent(Clock_Tick);
 
 TASK(ToggelLED) {
     gpio_toggle(GPIOG, GPIO14);
 }
 
 
+TASK(ClockUpdater) {
+   TaskType myTaskId;
+
+   GetTaskID( &myTaskId );
+
+    while(1) {
+    	unsigned events = 0;
+
+    	WaitEvent (Clock_Tick);
+    	
+	GetEvent ( myTaskId, &events );
+	ClearEvent( Clock_Tick );
+    }
+
+}
+
 void StartupHook() {
-    sdram_init();
-    lcd_spi_init();
-
-    gfx_init(lcd_draw_pixel, 240, 320);
-    
-    gfx_fillScreen(LCD_GREY);
-    gfx_setTextSize(1);
-    gfx_setCursor(15, 30);
-    gfx_puts("STM32F4-DISCO");
-
-    lcd_show_frame();
+ 
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)) ) {
     StartOS(Application_Mode_stm234f);
     return 0;
 }

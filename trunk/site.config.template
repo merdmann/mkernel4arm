@@ -1,0 +1,32 @@
+##
+## Copyright (C) 2015 Michael Erdmann <michael.erdmann@snafu.de>
+##
+## CMakeList.txt is part of mkernel4arm.
+##
+## mkernel4arm is free software: you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation, either version 3 of the License, or
+## (at your option) any later version.
+##
+## mkernel4arm is distributed in the hope that it will be useful,
+## but WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## GNU General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with muon_reloaded. If not, see <http://www.gnu.org/licenses/>.
+##
+##  Created on: Jun 10, 2015
+##      Author: Michael Erdmann
+## 
+
+
+##
+## Location of the different parts of libopencm3
+##
+set(OPENLIBCM3  /d/lib/opencm3/ )
+set(OPENLIBCM3_INCLUDE ${OPENLIBCM3}/include )
+set(OPENLIBCM3_LIB ${OPENLIBCM3} )
+
+## Location of the open ocd server
+set(OOCD /c/arm/openocd-0.8.0/bin-x64/openocd-x64-0.8.0)

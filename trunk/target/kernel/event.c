@@ -31,13 +31,13 @@
   *   Please note in case of mon preemptive processes we are
   *   using the a spin lock to wait for specific events.
   */
-
 #include "kernel.h"
 #include "proc.h"
 #include "event.h"
+#include "machdep.h"
 
 /* set an event flag */
-StatusType SetEvent ( TaskType TaskID, EventMaskType Mask ) {
+StatusType SetEvent ( const TaskType TaskID, const EventMaskType Mask ) {
 	/*
 	 * OPTIMITIC APPROACH: If not suspended the event will be set and the
 	 * process is forced to running. Either the process is busy with something
@@ -56,7 +56,7 @@ StatusType SetEvent ( TaskType TaskID, EventMaskType Mask ) {
 }
 
 /* clear event flags */
-StatusType ClearEvent ( EventMaskType Mask ) {
+StatusType ClearEvent ( const EventMaskType Mask ) {
 	if( !IsUserMode() )
 		return E_OS_CALLEVEL;
 
@@ -68,13 +68,13 @@ StatusType ClearEvent ( EventMaskType Mask ) {
 }
 
 /* return the events stored with the given task */
-StatusType GetEvent ( TaskType TaskID, EventMaskRefType Event ) {
+StatusType GetEvent ( const TaskType TaskID, const EventMaskRefType Event ) {
 	*Event =_TCB[TaskID].event;
 	return E_OK;
 }
 
 /* wait for an event */
-StatusType WaitEvent ( EventMaskType Mask ) {
+StatusType WaitEvent ( const EventMaskType Mask ) {
 
 	if(!IsUserMode())
 		return E_OS_CALLEVEL;

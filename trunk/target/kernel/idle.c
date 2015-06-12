@@ -43,9 +43,10 @@ TASK(Idle_Task) {
     TASK_ARGUMENT myArgs __attribute__((unused)) = arg;
     long loop_count = 0;
 
+    _machdep_banner();    
     _machdep_initialize_wdt();
 
-    /* idle and indicate idle activity */
+    /* @non-terminating@ */
     while(1) {
     	_machdep_clear_wdt();
 

@@ -42,8 +42,8 @@ CPU myapp {
         ALARM ledAlarm {
                 COUNTER = System_Tick ;
                 AUTOSTART = TRUE {
-                        ALARMTIME = 50000;
-                        CYCLETIME = 50000;
+                        ALARMTIME = 50;
+                        CYCLETIME = 50;
                 };
 
                 ACTION = ACTIVATETASK { TASK = ToggelLED; };
@@ -53,10 +53,38 @@ CPU myapp {
                 };
         } ;
 
+
+        EVENT Clock_Tick { MASK = 1; };
+
+        ALARM ClockAlarm {
+               COUNTER = System_Tick ;
+               AUTOSTART = TRUE {
+                        ALARMTIME = 5000;
+                        CYCLETIME = 1000;
+                };
+
+                ACTION = SETEVENT {
+                        TASK = ClockUpdater;
+                        EVENT = Clock_Tick;
+                };
+
+        
+                AUTOSTART = TRUE {
+                        APPMODE = stm234f;
+                };
+        } ;
+
         TASK ToggelLED {
                 PRIORITY = 1;
                 STACKSIZE = 128;
                 SCHEDULE = FALSE;
+                AUTOSTART = FALSE;
+        };
+
+        TASK ClockUpdater {
+                PRIORITY = 1;
+                STACKSIZE = 128;
+                SCHEDULE = TRUE;
                 AUTOSTART = FALSE;
         };
 } ;

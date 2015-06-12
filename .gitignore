@@ -1,8 +1,8 @@
-build/
-build-*/
+trunk/config.site
+build/*
 *.asm
 *.lst
 *.o
 *.d
-
+*.elf
 trunk/site.config

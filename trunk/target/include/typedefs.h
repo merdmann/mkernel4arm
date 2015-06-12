@@ -29,9 +29,10 @@
 #ifndef TYPEDEFS_H
 #define TYPEDEFS_H
 
+#include <libopencm3/cm3/scb.h>
+ 
 typedef unsigned char   byte;           // 8-bit
 typedef unsigned int    word;           // 16-bit
-typedef unsigned long   dword;          // 32-bit
 
 /* ......................... OSEK/VDX Types .................................. */
 /* OSEK/VDX data types */
@@ -62,6 +63,6 @@ typedef enum _BOOL { FALSE = 0, TRUE  } BOOL;
 #define OK      TRUE
 #define FAIL    FALSE
 #define NULL	((void*)0)
-typedef dword t_task_id;
+typedef uint32_t t_task_id;
 
 #endif //TYPEDEFS_H

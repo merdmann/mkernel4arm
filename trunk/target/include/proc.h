@@ -143,6 +143,14 @@ typedef TaskType* TaskRefType;
 /** VDX/OIL: non preemptive scheduling */
 #define NON	0
 
+
+/** Task Argument. A task is represented as function which gets one argument of
+ *  the type TASK_ARGUMENT.
+ */
+typedef POINTER TASK_ARGUMENT;
+
+typedef void (*t_entry)(TASK_ARGUMENT);
+
 /** the static part of an task.
  * A process descriptor constist of an static part which describes the process
  * and a dynamic part which realtes to the dynamic behaviour of the task.
@@ -151,9 +159,10 @@ typedef struct {
 	byte max_activations;
 	byte priority;
 	byte schedule;
-	CODE POINTER entry;
+	t_entry entry;
 	DATA POINTER tos;
 } t_task_descriptor;
+
 
 
 /** The task control block. The scheduling is based on this control block. The
@@ -168,9 +177,9 @@ typedef struct {
 	unsigned  	event;    	/**< event word */
 	unsigned	mask;	  	/**< the events we are waiting for */
 	DATA POINTER    wait_addr; 	/**< the address of the tasks lock resource */
-	dword	        activations;    /**< activation requested */
+	uint32_t	activations;    /**< activation requested */
 
-	t_task_descriptor *descriptor;/**< points to task descriptor */
+	const t_task_descriptor *descriptor;/**< points to task descriptor */
 } t_tcb;
 
 
@@ -195,22 +204,11 @@ extern BOOL _oil_use_preemption;
  */
 extern void _os_schedule( void );
 
-/** _os_yield may be used by user tasks to force a reschedule. Under normal
- * circumstances there is not need to use this function since the API's are
- * invoking this function by them self if needed.
- */
-
-
-/** Task Argument. A task is represented as function which gets one argument of
- *  the type TASK_ARGUMENT.
- */
-typedef POINTER TASK_ARGUMENT;
-
 /*
  * This method is used by the system generator to create a task
  * instance.
  */
-StatusType _os_task_create( t_task_id id, t_task_descriptor *descr );
+StatusType _os_task_create( const t_task_id id, const t_task_descriptor *descr );
 
 /** claim the tcb for administration purpose
  *  @param pointer to the control block
@@ -228,7 +226,7 @@ StatusType _os_task_create( t_task_id id, t_task_descriptor *descr );
  *  If called from an interrupt handler the method does nothing.
  *
  */
-void _os_claim_tcb(t_task_id id);
+void _os_claim_tcb(const t_task_id id);
 
 /** release a tcb which has been claimed with _os_claim_tcb.
  *  @param pointer to the control block.
@@ -240,7 +238,14 @@ void _os_claim_tcb(t_task_id id);
  *  If called from an interrupt handler is does nothing.
  *
  */
-void _os_release_tcb( t_task_id id);
+void _os_release_tcb(const t_task_id id);
+
+/**
+ * @brief Trap in case the process terminates unexpected
+ * @details This is expected to be called in case the process terminates due to an
+ *          stack underflow.
+ */
+void _os_process_trap(void);
 
 /** _os_kernel_stack should not be used by any application since it is
  * used as an interfaces between the oil generated code and the kernel.
@@ -256,7 +261,7 @@ extern byte _os_mode;
 #define USER_MODE 		0				/* Call from application */
 #define KERNEL_MODE 	255				/* call from kernel */
 
-#define UserMode(X) if(_os_mode == USER_MODE) X
+#define UserMode(X) if(_os_mode == USER_MODE) { X ; }
 #define IsUserMode(x) (_os_mode == USER_MODE)
 
 /**
@@ -265,7 +270,6 @@ extern byte _os_mode;
 
 void _os_underflow_trap(void);
 void _os_task_terminated(void);
-
 void _os_initialize_scheduler(void) ;
 
 #endif

@@ -307,7 +307,7 @@ static int sysgen_task_tables(t_object *app) {
 
 	for(i=0; i<task_id;++i) {
 		//fprintf(cf, "#pragma udata userbank stack_%s\n", t[i].name );
-		fprintf(cf, "static dword stack_%s[%d];\n", t[i].name, t[i].stacksize );
+		fprintf(cf, "static uint32_t stack_%s[%d];\n", t[i].name, t[i].stacksize );
 
 
 		fprintf(cf, "static CODE t_task_descriptor %s_descriptor= {\n", t[i].name );
@@ -322,7 +322,7 @@ static int sysgen_task_tables(t_object *app) {
 	}
 
 	//fprintf(cf, "#pragma udata userbank idle_stack\n");
-	fprintf(cf, "static dword idle_stack[STACK_SIZE_IDLE_TASK];\n");
+	fprintf(cf, "static uint32_t idle_stack[STACK_SIZE_IDLE_TASK];\n");
 	fprintf(hf, "#define TASK_ID_IDLE %d\n", task_id);
 
 	fprintf(cf, "CODE t_task_descriptor _os_idle_task_descriptor = {\n");
@@ -434,7 +434,7 @@ static int sysgen_os(t_object *app) {
 		fprintf(cf,"BOOL _oil_use_preemption = FALSE;\n");
 
 	kstack_size = atoi( oil_attribute(o,"STACKSIZE", "160") );
-	fprintf(cf, "static dword kernel_stack[%d];\n",kstack_size );
+	fprintf(cf, "static uint32_t kernel_stack[%d];\n",kstack_size );
 	fprintf(cf, "POINTER _os_kernel_stack;\n");
 
 	object_query_delete( query );
@@ -836,8 +836,8 @@ int sysgen_generate(char *target, char *name) {
 	sysgen_alarm_autostart(appl);
 	fprintf(cf,"\n");
 
-	if( use_timers )
-		fprintf(cf, "_os_initialize_alarm();\n");
+	//if( use_timers )
+	//	fprintf(cf, "_os_initialize_alarm();\n");
 
 	fprintf(cf, "}");
 
