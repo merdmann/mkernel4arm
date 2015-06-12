@@ -4,14 +4,14 @@ project(stm32f C)
 
 ####
 set(KERNEL_INCLUDE ../../include)
-include_directories(${KERNEL_INCLUDE} ${OPENLIBCM3}/include ./ ${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${KERNEL_INCLUDE} ${OPENLIBCM3_INCLUDE} ./ ${CMAKE_CURRENT_BINARY_DIR})
 add_definitions( -DSTM32F4 )
 
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -MD -Wall -Wundef -I${KERNEL_INCLUDE}")
 set(MAKE_C_FLAGS_DEBUG "-g -ggdb")
 
 set( CMAKE_EXE_LINKER_FLAGS "--static -nostartfiles")
-set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${OPENLIBCM3}/lib")
+set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${OPENLIBCM3_LIB}")
 set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -T${PROJECT_SOURCE_DIR}/stm32f429i-discovery.ld")
 set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Map=myapp.map")
 set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--print-gc-sections")

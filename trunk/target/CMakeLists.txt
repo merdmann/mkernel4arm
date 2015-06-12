@@ -21,16 +21,13 @@
 ## 
 cmake_minimum_required(VERSION 3.0)
 
-
-## where is libopencm3
-set(OPENLIBCM3  /c/lib/libopencm3/arm-none-eabi )
+include(../site.config)
 
 set(KERNEL_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 
-include_directories(${KERNEL_INCLUDE} ${OPENLIBCM3}/include ./ ${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${KERNEL_INCLUDE} ${OPENLIBCM3_INCLUDE} ./ ${CMAKE_CURRENT_BINARY_DIR})
 
 ## open ocd
-set(OOCD /c/tools/openocd-0.9.0/bin-x64/openocd.exe)
 set(OOCD_INTERFACE stlink-v2)
 set(OOCD_BOARD stm32f4discovery)
 

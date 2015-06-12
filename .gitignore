@@ -1,3 +1,4 @@
+trunk/config.site
 build/*
 *.asm
 *.lst
