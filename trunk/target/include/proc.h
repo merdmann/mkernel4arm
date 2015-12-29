@@ -172,10 +172,10 @@ typedef struct {
 typedef struct {
 	DATA POINTER	stack;     	/**< base address of the stack */
 	t_task_id       admin;		/**< owner of the control block */
-	byte       	state;    	/**< state of the process */
-	byte		prio;	  	/**< priority of the process */
-	unsigned  	event;    	/**< event word */
-	unsigned	mask;	  	/**< the events we are waiting for */
+	byte       		state;    	/**< state of the process */
+	byte			prio;	  	/**< priority of the process */
+	unsigned  		event;    	/**< event word */
+	unsigned		mask;	  	/**< the events we are waiting for */
 	DATA POINTER    wait_addr; 	/**< the address of the tasks lock resource */
 	uint32_t	activations;    /**< activation requested */
 
