@@ -1,0 +1,38 @@
+{
+	"version": "0.1.0",
+	"command": "make",
+	/* "showOutput": "silent",*/
+	"tasks": [
+	       {
+            "taskName": "all",
+            "isBuildCommand": true,
+           /* "showOutput": "silent",*/
+            "problemMatcher": {
+                "owner": "gcc",
+                "fileLocation": [   "relative",
+                    "${workspaceRoot}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+		{
+			"taskName": "clean",
+			"args": [ "clean" ],
+			// Show the output window only if unrecognized errors occur.
+			"showOutput": "silent",
+			// Use the standard MS compiler pattern to detect errors, warnings
+			// and infos in the output.
+			"problemMatcher": [
+				"$msCompile",
+				"$lessCompile"
+			]
+		}
+	]
+}
