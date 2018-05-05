@@ -15,9 +15,11 @@ are installed on your system.
 
 In order to start pls do the following
 
+```bash
 $ cd trunk
 $ cp site.config.template site.config
 .. udpate the file site.config ...
+```
 
 The file site.config is expected to be ignored by git.
 
